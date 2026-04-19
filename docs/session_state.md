@@ -86,10 +86,12 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
   - branch: `codex/resolved-spec-rust-foundation`
   - commit: `Add resolved spec rust renderer foundation`
   - remote: `origin/codex/resolved-spec-rust-foundation`
+- Draft PR opened:
+  - https://github.com/hexafe/hexafe-plotstats/pull/1
 
 ## Next steps
 
-1. Open or review the GitHub PR/branch for `codex/resolved-spec-rust-foundation`.
+1. Review draft PR #1.
 2. Next implementation target: port histogram native drawing behind `render_histogram_png`.
 3. Add parity-oriented tests for histogram resolved spec output before pixel-level comparisons.
 4. Keep updating this file after each implementation checkpoint.
