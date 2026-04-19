@@ -1,6 +1,6 @@
 # Session state
 
-Last updated: 2026-04-19, committed scaffold checkpoint
+Last updated: 2026-04-19, remote integration checkpoint
 
 ## Current goal
 
@@ -57,11 +57,15 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
 - Local commit created:
   - `Scaffold hexafe plotstats package`
   - Run `git rev-parse --short HEAD` for the exact current hash.
+- GitHub remote configured:
+  - `origin` -> `git@github.com:hexafe/hexafe-plotstats.git`
+- Remote `main` initially contained a GitHub-created `LICENSE` commit.
+- Local scaffold merged `origin/main` with `--allow-unrelated-histories` to preserve the remote license.
 
 ## Next steps
 
-1. Decide whether to push a new GitHub repository now or keep local until Rust/native port starts.
-2. Start Rust/native port with histogram resolved spec first.
+1. Push integrated `main` to GitHub.
+2. Start Rust/native port foundation with histogram resolved spec first.
 3. Keep updating this file after each implementation checkpoint.
 
 ## Known non-goals for this checkpoint
