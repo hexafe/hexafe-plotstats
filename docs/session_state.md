@@ -1,6 +1,6 @@
 # Session state
 
-Last updated: 2026-04-19, resolved-spec integration checkpoint
+Last updated: 2026-04-19, resolved-spec branch pushed checkpoint
 
 ## Current goal
 
@@ -82,14 +82,17 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
   - `python -m compileall -q src tests examples`
   - `PYTHONPATH=src python examples/basic_usage.py`
   - `PYTHONPATH=src python examples/pandas_usage.py`
+- Feature branch committed and pushed:
+  - branch: `codex/resolved-spec-rust-foundation`
+  - commit: `Add resolved spec rust renderer foundation`
+  - remote: `origin/codex/resolved-spec-rust-foundation`
 
 ## Next steps
 
-1. Review integrated diff.
-2. Commit resolved-spec/Rust PNG API foundation.
-3. Push `codex/resolved-spec-rust-foundation`.
-4. Next implementation target: port histogram native drawing behind `render_histogram_png`.
-5. Keep updating this file after each implementation checkpoint.
+1. Open or review the GitHub PR/branch for `codex/resolved-spec-rust-foundation`.
+2. Next implementation target: port histogram native drawing behind `render_histogram_png`.
+3. Add parity-oriented tests for histogram resolved spec output before pixel-level comparisons.
+4. Keep updating this file after each implementation checkpoint.
 
 ## Known non-goals for this checkpoint
 
