@@ -13,8 +13,8 @@ render_histogram(payload, backend="rust")
 
 Current state:
 
-- `backend="matplotlib"` is implemented.
-- `backend="rust"` is scaffolded and raises `RendererBackendUnavailable`.
+- `backend="matplotlib"` is the default and is implemented.
+- `backend="rust"` is an opt-in path and currently raises `RendererBackendUnavailable`.
 - The public API is intentionally stable before the Rust/native implementation is ported.
 
 ## Metroliza extraction map
@@ -60,7 +60,7 @@ Recommended handoff:
   - chart-specific primitives
   - `resolved_render_spec`
 
-`resolved_render_spec` is the important parity boundary. Python should resolve layout, ticks, density, table rows, annotations, and chart primitives. Rust should draw those primitives.
+`resolved_render_spec` is the important parity boundary. Python should resolve layout, ticks, density, table rows, annotations, and chart primitives. Rust should draw those primitives. That is the shape the future native backend should accept, and it is the point where matplotlib parity is measured.
 
 ## API target
 
@@ -80,13 +80,16 @@ render_scatter(payload, backend="rust")
 Lower-level Rust/native target:
 
 ```python
-render_histogram_png(spec: Mapping[str, object]) -> ChartRenderResult
-render_distribution_png(spec: Mapping[str, object]) -> ChartRenderResult
-render_iqr_png(spec: Mapping[str, object]) -> ChartRenderResult
-render_trend_png(spec: Mapping[str, object]) -> ChartRenderResult
+render_histogram_png(payload) -> ChartRenderResult
+render_violin_png(payload) -> ChartRenderResult
+render_iqr_png(payload) -> ChartRenderResult
+render_scatter_png(payload) -> ChartRenderResult
+render_scatter_trend_png(payload) -> ChartRenderResult
 ```
 
-The Rust/native result should expose:
+These byte-oriented entry points are exposed in Python. They currently raise `RendererBackendUnavailable` because the native module is not implemented yet. Internally, the histogram path resolves the payload to a pure mapping before it would call the native module.
+
+The Rust/native result should eventually expose:
 
 - `png_bytes`
 - `backend`
@@ -104,11 +107,11 @@ The Rust/native result should expose:
 
 ## Porting sequence
 
-1. Add resolved spec models in `hexafe_plotstats.models.render` or `hexafe_plotstats.models.specs`.
-2. Add mapping conversion for existing payloads.
-3. Port histogram native path first because it has the richest resolved spec and table/annotation requirements.
-4. Add byte-oriented `ChartRenderResult` for Rust/native PNG output.
-5. Wire `backend="rust"` to the native extension when available.
+1. Done: add resolved spec models in `hexafe_plotstats.specs` and re-export them through `models.specs`.
+2. Done: add histogram payload to resolved spec mapping conversion.
+3. Done: add byte-oriented `ChartRenderResult` for Rust/native PNG output.
+4. Next: port histogram native path first because it has the richest resolved spec and table/annotation requirements.
+5. Wire the rust PNG helpers to the native extension when available.
 6. Add parity tests chart by chart using matplotlib as oracle, but avoid pixel-perfect tests at first.
 7. Tune Rust output toward 1:1 matplotlib parity.
 
@@ -118,4 +121,3 @@ The Rust/native result should expose:
 - Do not require Rust for normal package import.
 - Do not require matplotlib artist extraction in normal Rust rendering.
 - Do not port workbook/export thread orchestration.
-

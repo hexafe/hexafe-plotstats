@@ -3,6 +3,7 @@ from .models import (
     DistributionConfig,
     DistributionFitResult,
     DistributionSummary,
+    ChartRenderResult,
     HistogramConfig,
     HistogramPayload,
     IQRConfig,
@@ -26,9 +27,14 @@ from .renderers.matplotlib.violin import render_violin_matplotlib
 from .renderers import (
     RendererBackendUnavailable,
     render_histogram,
+    render_histogram_png,
     render_iqr,
+    render_iqr_png,
     render_scatter,
+    render_scatter_png,
+    render_scatter_trend_png,
     render_violin,
+    render_violin_png,
 )
 from .stats.capability import compute_capability
 from .stats.distribution_fit import fit_distribution
@@ -36,6 +42,7 @@ from .stats.summary_stats import summarize_distribution
 
 __all__ = [
     "CapabilitySummary",
+    "ChartRenderResult",
     "DistributionConfig",
     "DistributionFitResult",
     "DistributionSummary",
@@ -59,11 +66,16 @@ __all__ = [
     "fit_distribution",
     "render_histogram",
     "render_histogram_matplotlib",
+    "render_histogram_png",
     "render_iqr",
     "render_iqr_matplotlib",
+    "render_iqr_png",
     "render_scatter",
     "render_scatter_matplotlib",
+    "render_scatter_png",
+    "render_scatter_trend_png",
     "render_violin",
     "render_violin_matplotlib",
+    "render_violin_png",
     "summarize_distribution",
 ]

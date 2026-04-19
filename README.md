@@ -9,8 +9,8 @@ Qt, thread, Google export, or dashboard orchestration concerns.
 
 - Build typed payloads first.
 - Render payloads through an explicit backend.
-- Default to matplotlib.
-- Keep Rust/native rendering optional and backend-selectable.
+- Default to `backend="matplotlib"`.
+- Keep Rust/native rendering opt-in behind `backend="rust"`.
 - Keep adapters thin and optional.
 
 ## Install
@@ -56,10 +56,25 @@ render_histogram(payload, backend="rust")
 
 Current state:
 
-- `backend="matplotlib"` works and returns `RenderResult(fig, ax, metadata)`.
-- `backend="rust"` is scaffolded and raises `RendererBackendUnavailable` until the Rust/native renderer is ported from `metroliza`.
+- `backend="matplotlib"` is the default and returns `RenderResult(fig, ax, metadata)`.
+- `backend="rust"` is an explicit opt-in and currently raises `RendererBackendUnavailable`.
 
 This keeps the user-facing API stable while Rust parity work proceeds behind the backend boundary.
+
+## Resolved spec boundary
+
+The parity handoff is the resolved spec, not a matplotlib figure.
+
+Python is responsible for resolving:
+
+- layout
+- ticks
+- bars, boxes, lines, and other chart primitives
+- table rows
+- annotations
+- chart-specific render metadata
+
+The Rust PNG entry points convert payloads into that resolved mapping before calling a native module. The native module is still absent, so those entry points currently raise `RendererBackendUnavailable`, but the handoff contract is now present.
 
 ## Payload builders
 
@@ -87,11 +102,22 @@ from hexafe_plotstats import render_histogram_matplotlib
 ## Rust/native renderer
 
 Rust/native rendering is an explicit backend target, not the default.
+In this package, the native backend is not yet available and the rust path raises `RendererBackendUnavailable`.
+
+The byte-oriented native helpers are exposed separately from matplotlib figure renderers:
+
+```python
+from hexafe_plotstats import render_histogram_png
+
+render_histogram_png(payload)  # currently raises RendererBackendUnavailable
+```
 
 The porting plan is:
 
 1. keep chart payloads backend-neutral
-2. port the metroliza Rust/native rendering boundary behind `backend="rust"`
+2. use resolved specs as the Python-to-native handoff
+3. port the metroliza Rust/native rendering boundary behind the rust PNG helpers
+4. tune chart output toward matplotlib parity
 3. tune Rust output against matplotlib output chart by chart
 4. keep workbook and thread orchestration outside this package
 

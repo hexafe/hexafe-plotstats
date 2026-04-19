@@ -1,6 +1,6 @@
 # Session state
 
-Last updated: 2026-04-19, remote integration checkpoint
+Last updated: 2026-04-19, resolved-spec integration checkpoint
 
 ## Current goal
 
@@ -61,12 +61,35 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
   - `origin` -> `git@github.com:hexafe/hexafe-plotstats.git`
 - Remote `main` initially contained a GitHub-created `LICENSE` commit.
 - Local scaffold merged `origin/main` with `--allow-unrelated-histories` to preserve the remote license.
+- Integrated `main` pushed to `origin/main`.
+- Active implementation branch:
+  - `codex/resolved-spec-rust-foundation`
+- Resolved spec foundation added:
+  - `src/hexafe_plotstats/specs`
+  - `histogram_payload_to_resolved_spec`
+  - primitive mapping helper `to_mapping`
+- Rust/native PNG API foundation added:
+  - `render_histogram_png`
+  - `render_violin_png`
+  - `render_iqr_png`
+  - `render_scatter_png`
+  - `render_scatter_trend_png`
+  - `ChartRenderResult`
+- Native module is still absent; rust PNG helpers raise `RendererBackendUnavailable`.
+- Verification after integration:
+  - `PYTHONPATH=src python -m pytest -q` -> `12 passed`
+  - root import/render/spec smoke passed
+  - `python -m compileall -q src tests examples`
+  - `PYTHONPATH=src python examples/basic_usage.py`
+  - `PYTHONPATH=src python examples/pandas_usage.py`
 
 ## Next steps
 
-1. Push integrated `main` to GitHub.
-2. Start Rust/native port foundation with histogram resolved spec first.
-3. Keep updating this file after each implementation checkpoint.
+1. Review integrated diff.
+2. Commit resolved-spec/Rust PNG API foundation.
+3. Push `codex/resolved-spec-rust-foundation`.
+4. Next implementation target: port histogram native drawing behind `render_histogram_png`.
+5. Keep updating this file after each implementation checkpoint.
 
 ## Known non-goals for this checkpoint
 

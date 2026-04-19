@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+import json
 import math
 
 import matplotlib
@@ -21,6 +23,8 @@ from hexafe_plotstats.adapters import (
     violin_payload,
 )
 from hexafe_plotstats.renderers import RendererBackendUnavailable
+from hexafe_plotstats.renderers import render_histogram_png
+from hexafe_plotstats.specs import histogram_payload_to_resolved_spec, to_mapping
 from hexafe_plotstats.adapters.pandas import series_summary
 from hexafe_plotstats.models.common import DistributionConfig, ScatterConfig, SpecLimits
 
@@ -69,6 +73,31 @@ def test_histogram_payload_includes_fit_and_rows() -> None:
     assert any(row.label == "count" for row in payload.table_rows)
 
 
+def test_histogram_resolved_spec_mapping_tracks_payload_parity_contract() -> None:
+    payload = histogram_payload([1.0, 1.2, 1.4, 1.6, 2.0], SpecLimits(lsl=0.8, usl=2.2))
+
+    resolved_spec = histogram_payload_to_resolved_spec(payload)
+    mapping = to_mapping(resolved_spec)
+
+    assert mapping["chart_type"] == "histogram"
+    assert mapping["bars"][0]["x0"] == pytest.approx(payload.bin_edges[0])
+    assert mapping["bars"][-1]["x1"] == pytest.approx(payload.bin_edges[-1])
+    assert mapping["table"]["rows"][0]["cells"][0]["text"] == "count"
+    assert mapping["metadata"]["spec_limits"]["lsl"] == 0.8
+    assert mapping["metadata"]["spec_limits"]["usl"] == 2.2
+    assert json.loads(json.dumps(mapping)) == mapping
+
+
+def test_renderer_backend_default_behavior_stays_matplotlib_first() -> None:
+    assert inspect.signature(render_histogram).parameters["backend"].default == "matplotlib"
+
+    payload = histogram_payload([1, 2, 3, 4, 5], SpecLimits(lsl=0.5, usl=5.5))
+    result = render_histogram(payload)
+
+    assert result.metadata["kind"] == "histogram"
+    result.fig.clf()
+
+
 def test_violin_payload_keeps_group_metadata() -> None:
     payload = violin_payload({"left": [1, 2, 3], "right": [4, 5, 6]}, SpecLimits(lsl=0.0, usl=10.0))
 
@@ -111,6 +140,13 @@ def test_renderer_backend_selection_defaults_to_matplotlib_and_exposes_rust() ->
 
     with pytest.raises(RendererBackendUnavailable):
         render_histogram(hist, backend="rust")
+
+
+def test_render_histogram_png_unavailable_behavior() -> None:
+    payload = histogram_payload([1, 2, 3, 4, 5], SpecLimits(lsl=0.5, usl=5.5))
+
+    with pytest.raises(RendererBackendUnavailable, match="rust renderer for histogram is not installed yet"):
+        render_histogram_png(payload)
 
 
 def test_pandas_adapter_if_installed() -> None:

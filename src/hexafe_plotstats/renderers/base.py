@@ -4,8 +4,8 @@ from typing import Literal
 
 
 RendererBackend = Literal["matplotlib", "rust"]
+NativeRendererBackend = Literal["rust"]
 
 
 class RendererBackendUnavailable(RuntimeError):
     """Raised when a selected renderer backend is not installed or not wired yet."""
-

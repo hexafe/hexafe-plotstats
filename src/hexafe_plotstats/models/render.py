@@ -10,3 +10,9 @@ class RenderResult:
     ax: Any
     metadata: dict[str, Any] = field(default_factory=dict)
 
+
+@dataclass(frozen=True)
+class ChartRenderResult:
+    png_bytes: bytes
+    backend: str
+    metadata: dict[str, Any] = field(default_factory=dict)

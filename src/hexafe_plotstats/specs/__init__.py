@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from ..specs import (
+from .histogram import histogram_payload_to_resolved_spec
+from .mapping import asdict, to_mapping
+from .primitives import (
     AxisSpec,
     BarSpec,
     Canvas,
@@ -14,11 +16,7 @@ from ..specs import (
     TableRow,
     TableSpec,
     TextSpec,
-    asdict,
-    histogram_payload_to_resolved_spec,
-    to_mapping,
 )
-from .common import SpecLimits
 
 __all__ = [
     "AxisSpec",
@@ -30,7 +28,6 @@ __all__ = [
     "ResolvedChartSpec",
     "ResolvedHistogramSpec",
     "Size",
-    "SpecLimits",
     "TableCell",
     "TableRow",
     "TableSpec",

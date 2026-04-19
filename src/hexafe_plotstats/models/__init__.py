@@ -17,11 +17,12 @@ from .payloads import (
     ViolinGroupPayload,
     ViolinPayload,
 )
-from .render import RenderResult
+from .render import ChartRenderResult, RenderResult
 from .summaries import CapabilitySummary, DistributionSummary, NormalitySummary
 
 __all__ = [
     "CapabilitySummary",
+    "ChartRenderResult",
     "CurvePayload",
     "DistributionCandidate",
     "DistributionConfig",
@@ -44,4 +45,3 @@ __all__ = [
     "ViolinGroupPayload",
     "ViolinPayload",
 ]
-
