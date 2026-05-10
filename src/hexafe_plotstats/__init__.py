@@ -27,6 +27,7 @@ from .renderers.matplotlib.violin import render_violin_matplotlib
 from .renderers import (
     RendererBackendCapability,
     RendererBackendUnavailable,
+    NativeRenderProfile,
     renderer_backend_available,
     renderer_backend_capabilities,
     render_histogram,
@@ -57,6 +58,7 @@ __all__ = [
     "RenderResult",
     "RendererBackendCapability",
     "RendererBackendUnavailable",
+    "NativeRenderProfile",
     "renderer_backend_available",
     "renderer_backend_capabilities",
     "ScatterConfig",

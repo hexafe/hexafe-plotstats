@@ -43,6 +43,27 @@ pub fn render(spec: &HistogramSpec) -> RenderResult<RenderedChart> {
                 }
             })
             .collect::<Vec<_>>();
+        if curve.fill_to_baseline && curve.fill_alpha > 0.0 && points.len() >= 2 {
+            let mut fill_points = points.clone();
+            if curve.coordinate_space == "canvas" {
+                fill_points.push(Point {
+                    x: points.last().map(|point| point.x).unwrap_or(0.0),
+                    y: spec.common.plot_rect.y + spec.common.plot_rect.height,
+                });
+                fill_points.push(Point {
+                    x: points.first().map(|point| point.x).unwrap_or(0.0),
+                    y: spec.common.plot_rect.y + spec.common.plot_rect.height,
+                });
+            } else {
+                let last_x = curve.x[count - 1];
+                let first_x = curve.x[0];
+                fill_points.push(transform.map(last_x, 0.0));
+                fill_points.push(transform.map(first_x, 0.0));
+            }
+            let fill_color = curve.fill_color.as_deref().unwrap_or(&curve.stroke);
+            svg.path(&fill_points, fill_color, "none", curve.fill_alpha, 0.0);
+            raster.fill_polygon(&fill_points, fill_color, "none", curve.fill_alpha, 0.0);
+        }
         svg.polyline(
             &points,
             &curve.stroke,
@@ -65,6 +86,9 @@ pub fn render(spec: &HistogramSpec) -> RenderResult<RenderedChart> {
         draw_line_spec(&mut svg, &mut raster, transform, line);
     }
     if let Some(line) = &spec.mean_line {
+        draw_line_spec(&mut svg, &mut raster, transform, line);
+    }
+    for line in &spec.annotation_lines {
         draw_line_spec(&mut svg, &mut raster, transform, line);
     }
     for annotation in &spec.annotations {

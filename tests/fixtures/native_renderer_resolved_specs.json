@@ -1,6 +1,54 @@
 {
   "fixtures": {
     "histogram_metroliza": {
+      "annotation_lines": [
+        {
+          "coordinate_space": "canvas",
+          "dash": [],
+          "kind": "annotation_leader",
+          "label": "",
+          "metadata": {
+            "raw": {
+              "color": "#dc2626",
+              "kind": "lsl",
+              "row_index": 0,
+              "text": "LSL",
+              "text_y_axes": 1.01,
+              "x": 0.5
+            },
+            "source": "annotation_rows"
+          },
+          "stroke": "#dc2626",
+          "stroke_width": 0.8,
+          "x0": 124.9,
+          "x1": 124.9,
+          "y0": 64.0,
+          "y1": 60.0
+        },
+        {
+          "coordinate_space": "canvas",
+          "dash": [],
+          "kind": "annotation_leader",
+          "label": "",
+          "metadata": {
+            "raw": {
+              "color": "#dc2626",
+              "kind": "usl",
+              "row_index": 1,
+              "text": "USL",
+              "text_y_axes": 1.05,
+              "x": 4.5
+            },
+            "source": "annotation_rows"
+          },
+          "stroke": "#dc2626",
+          "stroke_width": 0.8,
+          "x0": 548.1,
+          "x1": 548.1,
+          "y0": 64.0,
+          "y1": 44.0
+        }
+      ],
       "annotations": [
         {
           "align": "center",
@@ -8,10 +56,12 @@
           "fill": "#dc2626",
           "font_size": 9.0,
           "metadata": {
+            "box_y": 1.01,
             "coordinate_space": {
               "x": "data",
               "y": "axes"
             },
+            "leader_y": 1.0,
             "raw": {
               "color": "#dc2626",
               "kind": "lsl",
@@ -34,10 +84,12 @@
           "fill": "#dc2626",
           "font_size": 9.0,
           "metadata": {
+            "box_y": 1.05,
             "coordinate_space": {
               "x": "data",
               "y": "axes"
             },
+            "leader_y": 1.0,
             "raw": {
               "color": "#dc2626",
               "kind": "usl",
@@ -439,6 +491,7 @@
       "warnings": []
     },
     "histogram_simple": {
+      "annotation_lines": [],
       "annotations": [],
       "axes": [
         {
@@ -1609,26 +1662,26 @@
         },
         {
           "label": "value",
-          "maximum": 4.82,
+          "maximum": 5.17356168,
           "metadata": {},
-          "minimum": 0.18,
+          "minimum": -0.14737459,
           "orientation": "y",
           "scale": "linear",
           "tick_labels": [
-            "0.18",
-            "1.108",
-            "2.036",
-            "2.964",
-            "3.892",
-            "4.82"
+            "-0.147375",
+            "0.916813",
+            "1.981",
+            "3.04519",
+            "4.10937",
+            "5.17356"
           ],
           "tick_values": [
-            0.18,
-            1.108,
-            2.036,
-            2.964,
-            3.892,
-            4.82
+            -0.14737459,
+            0.91681266,
+            1.98099992,
+            3.04518717,
+            4.10937443,
+            5.17356168
           ]
         }
       ],
@@ -4144,7 +4197,7 @@
           "show_extrema": true,
           "show_mean": true,
           "show_quartiles": true,
-          "sigma_policy": "none"
+          "sigma_policy": "both_3_sigma"
         },
         "spec_limits": {
           "lsl": 0.5,
@@ -4207,6 +4260,120 @@
           "x1": 3.5,
           "y0": 4.5,
           "y1": 4.5
+        },
+        {
+          "coordinate_space": "data",
+          "dash": [
+            2.0,
+            2.0
+          ],
+          "kind": "sigma_lower",
+          "label": "-3 sigma",
+          "metadata": {
+            "group": "A",
+            "policy": "both_3_sigma"
+          },
+          "stroke": "#7c3aed",
+          "stroke_width": 0.9,
+          "x0": 0.78,
+          "x1": 1.22,
+          "y0": 0.21958653,
+          "y1": 0.21958653
+        },
+        {
+          "coordinate_space": "data",
+          "dash": [
+            2.0,
+            2.0
+          ],
+          "kind": "sigma_upper",
+          "label": "+3 sigma",
+          "metadata": {
+            "group": "A",
+            "policy": "both_3_sigma"
+          },
+          "stroke": "#7c3aed",
+          "stroke_width": 0.9,
+          "x0": 0.78,
+          "x1": 1.22,
+          "y0": 2.88041347,
+          "y1": 2.88041347
+        },
+        {
+          "coordinate_space": "data",
+          "dash": [
+            2.0,
+            2.0
+          ],
+          "kind": "sigma_lower",
+          "label": "-3 sigma",
+          "metadata": {
+            "group": "B",
+            "policy": "both_3_sigma"
+          },
+          "stroke": "#7c3aed",
+          "stroke_width": 0.9,
+          "x0": 1.78,
+          "x1": 2.22,
+          "y0": 1.46566134,
+          "y1": 1.46566134
+        },
+        {
+          "coordinate_space": "data",
+          "dash": [
+            2.0,
+            2.0
+          ],
+          "kind": "sigma_upper",
+          "label": "+3 sigma",
+          "metadata": {
+            "group": "B",
+            "policy": "both_3_sigma"
+          },
+          "stroke": "#7c3aed",
+          "stroke_width": 0.9,
+          "x0": 1.78,
+          "x1": 2.22,
+          "y0": 3.88433866,
+          "y1": 3.88433866
+        },
+        {
+          "coordinate_space": "data",
+          "dash": [
+            2.0,
+            2.0
+          ],
+          "kind": "sigma_lower",
+          "label": "-3 sigma",
+          "metadata": {
+            "group": "C",
+            "policy": "both_3_sigma"
+          },
+          "stroke": "#7c3aed",
+          "stroke_width": 0.9,
+          "x0": 2.78,
+          "x1": 3.22,
+          "y0": 2.24339944,
+          "y1": 2.24339944
+        },
+        {
+          "coordinate_space": "data",
+          "dash": [
+            2.0,
+            2.0
+          ],
+          "kind": "sigma_upper",
+          "label": "+3 sigma",
+          "metadata": {
+            "group": "C",
+            "policy": "both_3_sigma"
+          },
+          "stroke": "#7c3aed",
+          "stroke_width": 0.9,
+          "x0": 2.78,
+          "x1": 3.22,
+          "y0": 4.80660056,
+          "y1": 4.80660056
         }
       ],
       "title": {

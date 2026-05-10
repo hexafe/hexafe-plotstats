@@ -29,6 +29,20 @@ pub fn render(spec: &ViolinSpec) -> RenderResult<RenderedChart> {
     for marker in &spec.annotation_markers {
         let point = marker_point(transform, marker.x, marker.y, &marker.coordinate_space);
         let radius = marker.size.max(1.0) * 0.5;
+        if marker.kind == "minimum" || marker.kind == "maximum" {
+            let half_width = (radius * 2.2).max(3.0);
+            let left = Point {
+                x: point.x - half_width,
+                y: point.y,
+            };
+            let right = Point {
+                x: point.x + half_width,
+                y: point.y,
+            };
+            svg.line(left, right, &marker.stroke, 1.2, &[], marker.opacity);
+            raster.line(left, right, &marker.stroke, 1.2, marker.opacity);
+            continue;
+        }
         svg.circle(
             point,
             radius,

@@ -6,6 +6,7 @@ from typing import Literal
 
 RendererBackend = Literal["matplotlib", "rust"]
 NativeRendererBackend = Literal["rust"]
+NativeRenderProfile = Literal["fast", "compact", "debug"]
 
 
 @dataclass(frozen=True)

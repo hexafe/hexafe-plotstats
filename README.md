@@ -184,22 +184,32 @@ The byte-oriented native helpers are exposed separately from matplotlib figure r
 ```python
 from hexafe_plotstats import render_histogram_png
 
-result = render_histogram_png(payload)
+result = render_histogram_png(payload, profile="fast")
 result.png_bytes
 ```
+
+Native profiles are explicit:
+
+- `fast`: default, direct text rasterization, RGBA PNG, no debug SVG metadata.
+- `compact`: RGB PNG with fast compression for smaller files.
+- `debug`: includes debug SVG metadata and uses balanced PNG compression.
 
 The native package is built from `native/hexafe-plotstats-native` with maturin:
 
 ```bash
 cd native/hexafe-plotstats-native
-python -m maturin build
+python -m maturin build --release --locked
 ```
+
+For PyPI-safe Linux wheels, build inside a manylinux container or maturin action;
+host-built Linux wheels may use the non-uploadable `linux_x86_64` tag.
 
 Renderer parity and timing helpers are available under `scripts/`:
 
 ```bash
 python scripts/compare_renderers.py
-python scripts/benchmark_renderers.py
+python scripts/benchmark_renderers.py --chart synthetic
+python scripts/benchmark_renderers.py --chart realistic --profile compact
 ```
 
 ## Optional adapters

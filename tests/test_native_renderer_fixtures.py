@@ -90,7 +90,7 @@ def _build_resolved_spec_fixtures() -> dict[str, Any]:
     violin_groups = build_violin_payload(
         {"A": [1.0, 1.4, 1.8, 2.0], "B": [2.2, 2.5, 2.9, 3.1], "C": [3.0, 3.4, 3.7, 4.0]},
         limits,
-        ViolinConfig(show_mean=True, show_extrema=True, show_quartiles=True),
+        ViolinConfig(show_mean=True, show_extrema=True, show_quartiles=True, sigma_policy="both_3_sigma"),
     )
 
     return {

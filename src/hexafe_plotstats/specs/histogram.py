@@ -37,7 +37,8 @@ def histogram_payload_to_resolved_spec(
         if payload.fit and payload.fit.kde_reference
         else None
     )
-    curves = tuple(curve for curve in (fit_curve, kde_curve) if curve is not None)
+    overlay_curves, overlay_notes = _modeled_overlay_curve_specs(payload)
+    curves = tuple(curve for curve in (fit_curve, kde_curve) if curve is not None) + overlay_curves
 
     x_min, x_max = _x_range(payload, bars, curves)
     y_min, y_max = _y_range(bars, curves)
@@ -64,7 +65,8 @@ def histogram_payload_to_resolved_spec(
 
     spec_lines = _spec_lines(payload, y_max)
     mean_line = _mean_line(payload, y_max)
-    annotations = _annotations(payload)
+    annotation_lines = _annotation_lines(payload, plot_rect, x_min=x_min, x_max=x_max)
+    annotations = _annotations(payload) + overlay_notes
     table = _table_spec(payload, table_rect)
 
     return ResolvedHistogramSpec(
@@ -85,6 +87,7 @@ def histogram_payload_to_resolved_spec(
         curves=curves,
         spec_lines=spec_lines,
         mean_line=mean_line,
+        annotation_lines=annotation_lines,
         annotations=annotations,
         table=table,
         warnings=_warnings(payload),
@@ -162,6 +165,66 @@ def _curve_spec(curve: Any, *, kind: str, stroke: str, width: float, dash: tuple
         dash=dash,
         metadata=dict(getattr(curve, "metadata", {}) or {}),
     )
+
+
+def _modeled_overlay_curve_specs(payload: HistogramPayload) -> tuple[tuple[CurveSpec, ...], tuple[TextSpec, ...]]:
+    raw_rows = payload.metadata.get("modeled_overlay_rows")
+    if not isinstance(raw_rows, (list, tuple)):
+        return (), ()
+
+    curves: list[CurveSpec] = []
+    notes: list[TextSpec] = []
+    for index, raw in enumerate(raw_rows):
+        if not isinstance(raw, dict):
+            continue
+        kind = str(raw.get("kind") or "").strip().lower()
+        if kind == "curve_note":
+            text = str(raw.get("label") or raw.get("text") or "").strip()
+            if text:
+                notes.append(
+                    TextSpec(
+                        text=text,
+                        x=float(raw.get("x_axes") or 0.012),
+                        y=float(raw.get("y_axes") or (0.965 - 0.045 * len(notes))),
+                        font_size=float(raw.get("font_size") or 9.0),
+                        fill=str(raw.get("color") or "#374151"),
+                        align="left",
+                        baseline="top",
+                        role="curve_note",
+                        metadata={"coordinate_space": {"x": "axes", "y": "axes"}, "source": "modeled_overlay_rows", "raw": dict(raw)},
+                    )
+                )
+            continue
+        if kind and kind != "curve":
+            continue
+        x_values = _finite_tuple(raw.get("x") or ())
+        y_values = _finite_tuple(raw.get("y") or ())
+        points = tuple(
+            (x, y)
+            for x, y in zip(x_values, y_values, strict=False)
+            if math.isfinite(x) and math.isfinite(y)
+        )
+        if len(points) < 2:
+            continue
+        dash = raw.get("dash") if isinstance(raw.get("dash"), (list, tuple)) else ()
+        fill_to_baseline = bool(raw.get("fill_to_baseline"))
+        curves.append(
+            CurveSpec(
+                x=tuple(point[0] for point in points),
+                y=tuple(point[1] for point in points),
+                label=str(raw.get("label") or raw.get("text") or f"overlay {index + 1}"),
+                kind="modeled_overlay",
+                stroke=str(raw.get("color") or "#f97316"),
+                stroke_width=float(raw.get("linewidth") or raw.get("stroke_width") or 1.0),
+                dash=tuple(float(item) for item in dash if _is_finite_number(item)),
+                opacity=float(raw.get("alpha") if _is_finite_number(raw.get("alpha")) else 1.0),
+                fill_to_baseline=fill_to_baseline,
+                fill_color=str(raw.get("fill_color") or raw.get("color") or "#dc2626") if fill_to_baseline else None,
+                fill_alpha=float(raw.get("fill_alpha") if _is_finite_number(raw.get("fill_alpha")) else 0.0),
+                metadata={"source": "modeled_overlay_rows", "raw": dict(raw)},
+            )
+        )
+    return tuple(curves), tuple(notes)
 
 
 def _x_range(payload: HistogramPayload, bars: tuple[BarSpec, ...], curves: tuple[CurveSpec, ...]) -> tuple[float, float]:
@@ -306,7 +369,7 @@ def _modeled_overlay_table_rows(payload: HistogramPayload) -> tuple[TableRow, ..
     for index, raw in enumerate(raw_rows):
         if not isinstance(raw, dict):
             continue
-        label = str(raw.get("label") or raw.get("text") or raw.get("kind") or "").strip()
+        label = str(raw.get("label") or raw.get("text") or "").strip()
         if not label:
             continue
         value = str(raw.get("value") or raw.get("note") or "")
@@ -341,11 +404,14 @@ def _annotations(payload: HistogramPayload) -> tuple[TextSpec, ...]:
         if not text or not _is_finite_number(x_value):
             continue
         row_index = int(raw.get("row_index") or index)
+        text_y_axes = float(raw.get("text_y_axes") or (1.01 + (row_index * 0.045)))
+        box_y = raw.get("box_y")
+        leader_y = raw.get("leader_y")
         annotations.append(
             TextSpec(
                 text=text,
                 x=float(x_value),
-                y=float(raw.get("text_y_axes") or (1.01 + (row_index * 0.045))),
+                y=text_y_axes,
                 font_size=float(raw.get("font_size") or 9.0),
                 fill=str(raw.get("color") or "#111827"),
                 align=str((raw.get("placement_hint") or {}).get("ha") or "center")
@@ -353,10 +419,62 @@ def _annotations(payload: HistogramPayload) -> tuple[TextSpec, ...]:
                 else "center",
                 baseline="bottom",
                 role=str(raw.get("kind") or "histogram_annotation"),
-                metadata={"coordinate_space": {"x": "data", "y": "axes"}, "row_index": row_index, "raw": dict(raw)},
+                metadata={
+                    "coordinate_space": {"x": "data", "y": "axes"},
+                    "row_index": row_index,
+                    "box_y": float(box_y) if _is_finite_number(box_y) else text_y_axes,
+                    "leader_y": float(leader_y) if _is_finite_number(leader_y) else 1.0,
+                    "raw": dict(raw),
+                },
             )
         )
     return tuple(annotations)
+
+
+def _annotation_lines(payload: HistogramPayload, plot_rect: Rect, *, x_min: float, x_max: float) -> tuple[LineSpec, ...]:
+    raw_annotations = payload.metadata.get("annotation_rows")
+    if not isinstance(raw_annotations, (list, tuple)):
+        return ()
+    span = x_max - x_min
+    if not math.isfinite(span) or abs(span) < math.ulp(1.0):
+        return ()
+
+    lines: list[LineSpec] = []
+    for index, raw in enumerate(raw_annotations):
+        if not isinstance(raw, dict):
+            continue
+        text = str(raw.get("text") or raw.get("label") or "").strip()
+        x_value = raw.get("x")
+        if not text or not _is_finite_number(x_value):
+            continue
+        row_index = int(raw.get("row_index") or index)
+        text_y_axes = float(raw.get("text_y_axes") or (1.01 + (row_index * 0.045)))
+        anchor_x = plot_rect.x + ((float(x_value) - x_min) / span) * plot_rect.width
+        leader_start_y = _canvas_y_from_axes(raw.get("leader_y"), plot_rect, default=1.0)
+        leader_end_y = _canvas_y_from_axes(raw.get("box_y"), plot_rect, default=text_y_axes)
+        if not math.isfinite(anchor_x) or not math.isfinite(leader_start_y) or not math.isfinite(leader_end_y):
+            continue
+        lines.append(
+            LineSpec(
+                x0=anchor_x,
+                y0=leader_start_y,
+                x1=anchor_x,
+                y1=leader_end_y,
+                kind="annotation_leader",
+                stroke=str(raw.get("color") or "#111827"),
+                stroke_width=float(raw.get("leader_width") or 0.8),
+                coordinate_space="canvas",
+                metadata={"source": "annotation_rows", "raw": dict(raw)},
+            )
+        )
+    return tuple(lines)
+
+
+def _canvas_y_from_axes(value: Any, plot_rect: Rect, *, default: float) -> float:
+    axis_value = float(value) if _is_finite_number(value) else default
+    if 0.0 <= axis_value <= 1.5:
+        return plot_rect.y + plot_rect.height - axis_value * plot_rect.height
+    return axis_value
 
 
 def _axis_labels(payload: HistogramPayload) -> dict[str, str]:

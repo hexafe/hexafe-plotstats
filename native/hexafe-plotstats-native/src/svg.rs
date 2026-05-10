@@ -1,5 +1,6 @@
 use crate::spec::{
-    ChartTransform, CommonSpec, LineSpec, Point, Rect, RenderError, RenderResult, TextSpec,
+    ChartTransform, CommonSpec, LineSpec, Point, Rect, RenderError, RenderProfile, RenderResult,
+    TextSpec,
 };
 use crate::text;
 use std::sync::{Arc, OnceLock};
@@ -12,12 +13,16 @@ pub struct RenderedChart {
     pub width: u32,
     pub height: u32,
     pub primitive_count: usize,
+    pub render_profile: RenderProfile,
+    pub png_compression: &'static str,
+    pub png_color: &'static str,
     pub timings_ms: Vec<(String, f64)>,
 }
 
 pub struct SvgDocument {
     buffer: String,
     primitive_count: usize,
+    render_profile: RenderProfile,
     debug_shapes: bool,
     svg_text_output: bool,
     text_nodes: Vec<TextSpec>,
@@ -26,14 +31,16 @@ pub struct SvgDocument {
 pub struct FinishedSvgDocument {
     buffer: String,
     primitive_count: usize,
+    render_profile: RenderProfile,
     debug_shapes: bool,
     svg_text_output: bool,
     text_nodes: Vec<TextSpec>,
 }
 
 impl SvgDocument {
-    pub fn new(width: u32, height: u32, _background: &str) -> Self {
-        let debug_shapes = std::env::var_os("HEXAFE_PLOTSTATS_NATIVE_DEBUG_SVG").is_some();
+    pub fn new(width: u32, height: u32, _background: &str, render_profile: RenderProfile) -> Self {
+        let debug_shapes = render_profile == RenderProfile::Debug
+            || std::env::var_os("HEXAFE_PLOTSTATS_NATIVE_DEBUG_SVG").is_some();
         let svg_text_output = debug_shapes
             || std::env::var("HEXAFE_PLOTSTATS_NATIVE_TEXT")
                 .map(|value| value.eq_ignore_ascii_case("resvg"))
@@ -52,6 +59,7 @@ impl SvgDocument {
         Self {
             buffer,
             primitive_count: 1,
+            render_profile,
             debug_shapes,
             svg_text_output,
             text_nodes: Vec::new(),
@@ -223,6 +231,7 @@ impl SvgDocument {
         FinishedSvgDocument {
             buffer: self.buffer,
             primitive_count: self.primitive_count,
+            render_profile: self.render_profile,
             debug_shapes: self.debug_shapes,
             svg_text_output: self.svg_text_output,
             text_nodes: self.text_nodes,
@@ -479,10 +488,10 @@ impl RasterCanvas {
         }
     }
 
-    pub fn encode_png(self) -> RenderResult<Vec<u8>> {
+    pub fn encode_png(self, render_profile: RenderProfile) -> RenderResult<Vec<u8>> {
         let width = self.pixmap.width();
         let height = self.pixmap.height();
-        let rgb = png_rgb_output();
+        let rgb = png_rgb_output(render_profile);
         let raw = self.pixmap.data();
         let rgb_data = if rgb { Some(rgba_to_rgb(raw)) } else { None };
         let image_data = rgb_data.as_deref().unwrap_or(raw);
@@ -495,7 +504,7 @@ impl RasterCanvas {
                 png::ColorType::Rgba
             });
             encoder.set_depth(png::BitDepth::Eight);
-            encoder.set_compression(png_compression());
+            encoder.set_compression(png_compression(render_profile));
             let mut writer = encoder
                 .write_header()
                 .map_err(|exc| RenderError::Encode(exc.to_string()))?;
@@ -566,13 +575,21 @@ pub fn finish_chart(
     let text_start = Instant::now();
     let direct_text =
         !finished_svg.debug_shapes && raster.overlay_text(&finished_svg.text_nodes)?;
-    let svg = finished_svg.build_svg(!direct_text);
+    let expose_svg =
+        finished_svg.debug_shapes || finished_svg.render_profile == RenderProfile::Debug;
+    let svg = if !direct_text || expose_svg {
+        finished_svg.build_svg(!direct_text)
+    } else {
+        String::new()
+    };
     if !direct_text {
         raster.overlay_svg(&svg)?;
     }
     let text_overlay_ms = elapsed_ms(text_start);
     let png_start = Instant::now();
-    let png_bytes = raster.encode_png()?;
+    let png_compression = png_compression_label(finished_svg.render_profile);
+    let png_color = png_color_label(finished_svg.render_profile);
+    let png_bytes = raster.encode_png(finished_svg.render_profile)?;
     let png_encode_ms = elapsed_ms(png_start);
     let native_chart_render_ms = elapsed_ms(draw_start);
     Ok(RenderedChart {
@@ -581,6 +598,9 @@ pub fn finish_chart(
         width,
         height,
         primitive_count: finished_svg.primitive_count,
+        render_profile: finished_svg.render_profile,
+        png_compression,
+        png_color,
         timings_ms: vec![
             ("native_draw_ms".to_string(), draw_ms),
             ("native_svg_finish_ms".to_string(), svg_finish_ms),
@@ -602,7 +622,7 @@ fn elapsed_between_ms(start: Instant, end: Instant) -> f64 {
 pub fn render_surface(common: &CommonSpec) -> RenderResult<(SvgDocument, RasterCanvas, u32, u32)> {
     let width = common.canvas.width.round().max(1.0) as u32;
     let height = common.canvas.height.round().max(1.0) as u32;
-    let mut svg = SvgDocument::new(width, height, &common.background);
+    let mut svg = SvgDocument::new(width, height, &common.background, common.render_profile);
     let mut raster = RasterCanvas::new(width, height, &common.background)?;
     svg.rect(common.plot_rect, "#ffffff", "#d1d5db", 1.0, 1.0);
     raster.rect(common.plot_rect, "#ffffff", "#d1d5db", 1.0, 1.0);
@@ -889,29 +909,36 @@ fn stroke_style(width: f64) -> Stroke {
     stroke
 }
 
-pub fn png_compression_label() -> &'static str {
-    match std::env::var("HEXAFE_PLOTSTATS_NATIVE_PNG_COMPRESSION")
+pub fn png_compression_label(render_profile: RenderProfile) -> &'static str {
+    if let Some(label) = match std::env::var("HEXAFE_PLOTSTATS_NATIVE_PNG_COMPRESSION")
         .ok()
         .as_deref()
     {
-        Some("fastest") => "fastest",
-        Some("fast") => "fast",
-        Some("balanced") => "balanced",
-        Some("high") => "high",
-        _ => "none",
+        Some("fastest") => Some("fastest"),
+        Some("fast") => Some("fast"),
+        Some("balanced") => Some("balanced"),
+        Some("high") => Some("high"),
+        _ => None,
+    } {
+        return label;
+    }
+    match render_profile {
+        RenderProfile::Fast => "none",
+        RenderProfile::Compact => "fast",
+        RenderProfile::Debug => "balanced",
     }
 }
 
-pub fn png_color_label() -> &'static str {
-    if png_rgb_output() {
+pub fn png_color_label(render_profile: RenderProfile) -> &'static str {
+    if png_rgb_output(render_profile) {
         "rgb"
     } else {
         "rgba"
     }
 }
 
-fn png_compression() -> png::Compression {
-    match png_compression_label() {
+fn png_compression(render_profile: RenderProfile) -> png::Compression {
+    match png_compression_label(render_profile) {
         "fastest" => png::Compression::Fastest,
         "fast" => png::Compression::Fast,
         "balanced" => png::Compression::Balanced,
@@ -920,10 +947,11 @@ fn png_compression() -> png::Compression {
     }
 }
 
-fn png_rgb_output() -> bool {
-    std::env::var("HEXAFE_PLOTSTATS_NATIVE_PNG_COLOR")
-        .map(|value| value.eq_ignore_ascii_case("rgb"))
-        .unwrap_or(false)
+fn png_rgb_output(render_profile: RenderProfile) -> bool {
+    if let Ok(value) = std::env::var("HEXAFE_PLOTSTATS_NATIVE_PNG_COLOR") {
+        return value.eq_ignore_ascii_case("rgb");
+    }
+    matches!(render_profile, RenderProfile::Compact)
 }
 
 fn rgba_to_rgb(rgba: &[u8]) -> Vec<u8> {

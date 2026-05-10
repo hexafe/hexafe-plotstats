@@ -40,6 +40,12 @@ def render_violin_matplotlib(payload: ViolinPayload) -> RenderResult:
                     ax.hlines(group.summary.q3, position - 0.12, position + 0.12, color="tab:orange", linewidth=1.2, zorder=3)
             if show_extrema and group.summary.minimum is not None and group.summary.maximum is not None:
                 ax.vlines(position, group.summary.minimum, group.summary.maximum, color="tab:gray", linewidth=1, alpha=0.8)
+                ax.scatter([position], [group.summary.minimum], color="tab:gray", marker="_", s=42, zorder=3)
+                ax.scatter([position], [group.summary.maximum], color="tab:gray", marker="_", s=42, zorder=3)
+
+        for line in resolved.spec_lines:
+            if line.kind.startswith("sigma_"):
+                ax.hlines(line.y0, line.x0, line.x1, color=line.stroke, linewidth=line.stroke_width, linestyle="--", zorder=3)
 
     style_spec_limits_y(ax, payload.spec_limits)
     ax.set_xticks(positions, [group.label for group in payload.groups])

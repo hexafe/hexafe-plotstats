@@ -26,7 +26,7 @@ from hexafe_plotstats import (
     render_violin,
     render_violin_png,
 )
-from hexafe_plotstats.models import ChartRenderResult, HistogramConfig, ScatterConfig, TableRow
+from hexafe_plotstats.models import ChartRenderResult, HistogramConfig, ScatterConfig, TableRow, ViolinConfig
 from hexafe_plotstats.specs import (
     histogram_payload_to_resolved_spec,
     iqr_payload_to_resolved_spec,
@@ -165,6 +165,7 @@ def test_histogram_resolved_spec_preserves_metroliza_style_metadata() -> None:
     assert [row["cells"][0]["text"] for row in mapping["table"]["rows"]] == ["Count", "Model"]
     assert mapping["table"]["rows"][1]["metadata"]["section_break_before"] is True
     assert [annotation["text"] for annotation in mapping["annotations"]] == ["LSL", "USL"]
+    assert [line["kind"] for line in mapping["annotation_lines"]] == ["annotation_leader", "annotation_leader"]
     assert mapping["metadata"]["summary"]["count"] == 5
     assert mapping["metadata"]["capability"]["cpk"] is not None
     assert mapping["metadata"]["payload_metadata"]["x_view"] == {"min": 0.0, "max": 5.0}
@@ -222,6 +223,46 @@ def test_histogram_native_dispatch_receives_resolved_mapping(monkeypatch) -> Non
     assert captured["mapping"] == to_mapping(histogram_payload_to_resolved_spec(payload))
 
 
+def test_histogram_native_dispatch_can_select_render_profile(monkeypatch) -> None:
+    payload = build_histogram_payload(
+        [1, 2, 3, 4],
+        SpecLimits(lsl=0.5, usl=4.5),
+        config=HistogramConfig(density=False, include_fit=False),
+        metadata={"title": "Native profile"},
+    )
+    captured = {}
+
+    class NativeModule:
+        @staticmethod
+        def render_histogram_png(mapping):
+            captured["mapping"] = mapping
+            return {"png_bytes": b"png", "backend": "rust", "metadata": {"chart": "histogram"}}
+
+    monkeypatch.setattr(rust_backend, "_load_native_module", lambda: NativeModule)
+
+    result = render_histogram_png(payload, profile="compact")
+
+    assert result.png_bytes == b"png"
+    assert captured["mapping"]["metadata"]["render_profile"] == "compact"
+
+    render_histogram(payload, backend="rust", profile="debug")
+    assert captured["mapping"]["metadata"]["render_profile"] == "debug"
+
+
+def test_native_render_profile_rejects_unknown_values(monkeypatch) -> None:
+    payload = build_histogram_payload([1, 2, 3])
+
+    class NativeModule:
+        @staticmethod
+        def render_histogram_png(mapping):
+            return {"png_bytes": b"png", "backend": "rust", "metadata": {"chart": "histogram"}}
+
+    monkeypatch.setattr(rust_backend, "_load_native_module", lambda: NativeModule)
+
+    with pytest.raises(ValueError, match="unsupported native render profile"):
+        render_histogram_png(payload, profile="tiny")  # type: ignore[arg-type]
+
+
 def test_iqr_payload_resolves_to_pure_chart_spec_mapping() -> None:
     payload = build_iqr_payload(
         {"A": [1, 2, 3, 100], "B": [2, 3, 4, 5]},
@@ -256,6 +297,23 @@ def test_violin_payload_resolves_to_pure_chart_spec_mapping() -> None:
     assert mapping["annotation_markers"][0]["kind"] == "mean"
     assert [line["label"] for line in mapping["spec_lines"]] == ["LSL", "Nominal", "USL"]
     assert mapping["metadata"]["group_count"] == 2
+
+
+def test_violin_sigma_policy_resolves_to_explicit_lines_and_extrema_markers() -> None:
+    payload = build_violin_payload(
+        {"A": [1, 2, 3, 4, 5], "B": [2, 4, 6, 8, 10]},
+        SpecLimits(lsl=0.0, nominal=5.0, usl=12.0),
+        config=ViolinConfig(sigma_policy="both_3_sigma"),
+    )
+
+    mapping = to_mapping(violin_payload_to_resolved_spec(payload))
+
+    sigma_lines = [line for line in mapping["spec_lines"] if str(line["kind"]).startswith("sigma_")]
+    assert [line["kind"] for line in sigma_lines] == ["sigma_lower", "sigma_upper", "sigma_lower", "sigma_upper"]
+    assert all(line["stroke"] == "#7c3aed" for line in sigma_lines)
+    marker_kinds = [marker["kind"] for marker in mapping["annotation_markers"]]
+    assert "minimum" in marker_kinds
+    assert "maximum" in marker_kinds
 
 
 def test_scatter_payload_resolves_to_pure_chart_spec_mapping_with_trend() -> None:

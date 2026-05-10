@@ -11,13 +11,14 @@ from typing import Any, Callable, NoReturn
 from ...models.payloads import HistogramPayload, IQRPayload, ScatterPayload, ViolinPayload
 from ...models.render import ChartRenderResult
 from ...specs import to_mapping
-from ..base import RendererBackendUnavailable
+from ..base import NativeRenderProfile, RendererBackendUnavailable
 
 _NATIVE_MODULE_NAMES = ("_hexafe_plotstats_native", "hexafe_plotstats_native")
 _HISTOGRAM_RESOLVER_MODULE = "hexafe_plotstats.specs.histogram"
 _IQR_RESOLVER_MODULE = "hexafe_plotstats.specs.iqr"
 _SCATTER_RESOLVER_MODULE = "hexafe_plotstats.specs.scatter"
 _VIOLIN_RESOLVER_MODULE = "hexafe_plotstats.specs.violin"
+_NATIVE_RENDER_PROFILES = frozenset(("fast", "compact", "debug"))
 
 
 def _module_absent(exc: ModuleNotFoundError, module_name: str) -> bool:
@@ -87,7 +88,7 @@ def _load_scatter_resolver() -> Any | None:
 def _unavailable(chart: str) -> NoReturn:
     raise RendererBackendUnavailable(
         f"rust renderer for {chart} is not installed yet; use backend='matplotlib' "
-        "or install the future rust backend extra once it is available"
+        "or install hexafe-plotstats-native from a wheel built in native/hexafe-plotstats-native"
     )
 
 
@@ -193,6 +194,22 @@ def _native_spec_argument(native_module: Any, mapping: Mapping[str, Any]) -> Map
     return mapping
 
 
+def _validate_profile(profile: str) -> NativeRenderProfile:
+    if profile not in _NATIVE_RENDER_PROFILES:
+        raise ValueError(f"unsupported native render profile: {profile!r}")
+    return profile  # type: ignore[return-value]
+
+
+def _mapping_with_profile(mapping: dict[str, Any], profile: NativeRenderProfile) -> dict[str, Any]:
+    if profile == "fast":
+        return mapping
+    profiled = dict(mapping)
+    metadata = dict(profiled.get("metadata", {}) if isinstance(profiled.get("metadata"), Mapping) else {})
+    metadata["render_profile"] = profile
+    profiled["metadata"] = metadata
+    return profiled
+
+
 def _elapsed_ms(start_ns: int) -> float:
     return (perf_counter_ns() - start_ns) / 1_000_000
 
@@ -203,6 +220,7 @@ def _render_native_png(
     chart: str,
     native_function: str,
     resolve_mapping: Callable[[Any], dict[str, Any]],
+    profile: NativeRenderProfile = "fast",
 ) -> ChartRenderResult:
     total_start = perf_counter_ns()
     native_module = _load_native_module()
@@ -213,8 +231,10 @@ def _render_native_png(
     if native_renderer is None:
         _unavailable(chart)
 
+    profile = _validate_profile(profile)
+
     resolve_start = perf_counter_ns()
-    mapping = resolve_mapping(payload)
+    mapping = _mapping_with_profile(resolve_mapping(payload), profile)
     python_resolve_ms = _elapsed_ms(resolve_start)
 
     arg_start = perf_counter_ns()
@@ -241,62 +261,67 @@ def _render_native_png(
     return ChartRenderResult(png_bytes=result.png_bytes, backend=result.backend, metadata=metadata)
 
 
-def render_histogram_rust(payload: HistogramPayload) -> ChartRenderResult:
-    return render_histogram_png(payload)
+def render_histogram_rust(payload: HistogramPayload, *, profile: NativeRenderProfile = "fast") -> ChartRenderResult:
+    return render_histogram_png(payload, profile=profile)
 
 
-def render_violin_rust(payload: ViolinPayload) -> ChartRenderResult:
-    return render_violin_png(payload)
+def render_violin_rust(payload: ViolinPayload, *, profile: NativeRenderProfile = "fast") -> ChartRenderResult:
+    return render_violin_png(payload, profile=profile)
 
 
-def render_iqr_rust(payload: IQRPayload) -> ChartRenderResult:
-    return render_iqr_png(payload)
+def render_iqr_rust(payload: IQRPayload, *, profile: NativeRenderProfile = "fast") -> ChartRenderResult:
+    return render_iqr_png(payload, profile=profile)
 
 
-def render_scatter_rust(payload: ScatterPayload) -> ChartRenderResult:
-    return render_scatter_png(payload)
+def render_scatter_rust(payload: ScatterPayload, *, profile: NativeRenderProfile = "fast") -> ChartRenderResult:
+    return render_scatter_png(payload, profile=profile)
 
 
-def render_histogram_png(payload: HistogramPayload) -> ChartRenderResult:
+def render_histogram_png(payload: HistogramPayload, *, profile: NativeRenderProfile = "fast") -> ChartRenderResult:
     return _render_native_png(
         payload,
         chart="histogram",
         native_function="render_histogram_png",
         resolve_mapping=_histogram_resolved_spec,
+        profile=profile,
     )
 
 
-def render_violin_png(payload: ViolinPayload) -> ChartRenderResult:
+def render_violin_png(payload: ViolinPayload, *, profile: NativeRenderProfile = "fast") -> ChartRenderResult:
     return _render_native_png(
         payload,
         chart="violin",
         native_function="render_violin_png",
         resolve_mapping=_violin_resolved_spec,
+        profile=profile,
     )
 
 
-def render_iqr_png(payload: IQRPayload) -> ChartRenderResult:
+def render_iqr_png(payload: IQRPayload, *, profile: NativeRenderProfile = "fast") -> ChartRenderResult:
     return _render_native_png(
         payload,
         chart="iqr",
         native_function="render_iqr_png",
         resolve_mapping=_iqr_resolved_spec,
+        profile=profile,
     )
 
 
-def render_scatter_png(payload: ScatterPayload) -> ChartRenderResult:
+def render_scatter_png(payload: ScatterPayload, *, profile: NativeRenderProfile = "fast") -> ChartRenderResult:
     return _render_native_png(
         payload,
         chart="scatter",
         native_function="render_scatter_png",
         resolve_mapping=_scatter_resolved_spec,
+        profile=profile,
     )
 
 
-def render_scatter_trend_png(payload: ScatterPayload) -> ChartRenderResult:
+def render_scatter_trend_png(payload: ScatterPayload, *, profile: NativeRenderProfile = "fast") -> ChartRenderResult:
     return _render_native_png(
         payload,
         chart="scatter trend",
         native_function="render_scatter_trend_png",
         resolve_mapping=_scatter_resolved_spec,
+        profile=profile,
     )

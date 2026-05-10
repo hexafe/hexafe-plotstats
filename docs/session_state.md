@@ -207,24 +207,63 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
   - remote: `origin/codex/resolved-spec-rust-foundation`
 - Draft PR opened:
   - https://github.com/hexafe/hexafe-plotstats/pull/1
+- Follow-up performance/parity slice:
+  - Added native PNG render profiles: `fast` default, `compact` for smaller
+    PNGs, and `debug` for SVG metadata. The profile is passed through
+    `render_*_png(..., profile=...)` and resolved spec metadata.
+  - Expanded `scripts/benchmark_renderers.py` with synthetic/realistic suites,
+    individual realistic cases, and `--profile`. Realistic cases include the
+    Metroliza native histogram adapter path with modeled overlays, large
+    process histograms, dense scatter, hexbin scatter, many-group IQR, and
+    many-group violin.
+  - Histogram modeled overlays are now drawable curve primitives, including
+    filled tail regions. Histogram annotation rows now emit separate leader
+    lines in addition to annotation text.
+  - Violin `sigma_policy` now emits explicit `+3 sigma` and `-3 sigma` lines.
+    Native violin rendering preserves marker kind and draws extrema as distinct
+    ticks instead of generic dots.
+  - Native CI was expanded to Linux/macOS/Windows release wheel builds with
+    locked Rust dependencies, direct-text native smoke/backend tests, resvg
+    fallback smoke tests, and a Linux benchmark smoke.
+  - Local host PyPI-compatible Linux wheel validation still fails because the
+    host GLIBC symbols are too new; release wheels must be built in a
+    manylinux container/action. A normal local Linux wheel remains valid for
+    test execution.
+  - Validation:
+    `PYTHONPATH=src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats pytest -q`
+    -> `44 passed, 10 skipped`;
+    `PYTHONPATH=/tmp/hexafe_plotstats_native_current:src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats pytest -q`
+    -> `54 passed`;
+    `PYTHONPATH=/tmp/hexafe_plotstats_native_current:src HEXAFE_PLOTSTATS_NATIVE_TEXT=resvg MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats pytest tests/test_native_renderer_smoke.py -q`
+    -> `13 passed`;
+    `cargo fmt --check`, `cargo check --locked`, and `cargo test` in
+    `native/hexafe-plotstats-native` -> passed;
+    `python -m compileall -q src tests scripts examples` -> passed.
+  - Renderer comparison:
+    `PYTHONPATH=/tmp/hexafe_plotstats_native_current:src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats python scripts/compare_renderers.py --output /tmp/hexafe_plotstats_renderer_comparisons --threshold 15`
+    -> all comparisons passed; mean abs diffs were histogram 6.419, scatter
+    3.921, scatter trend 6.563, IQR 6.393, violin 4.563.
+  - Latest synthetic benchmark medians:
+    histogram Matplotlib 178.13 ms / Rust 8.05 ms; scatter 105.80 / 11.49;
+    IQR 76.48 / 3.39; violin 197.12 / 37.92.
+  - Latest realistic benchmark medians:
+    Metroliza table histogram 212.56 / 10.66; Metroliza adapter histogram
+    152.64 / 10.65; large process histogram 200.60 / 7.11; dense scatter
+    332.38 / 94.46; hexbin scatter 828.92 / 139.78; many-group IQR
+    160.46 / 6.09; many-group violin 450.12 / 52.32.
 
 ## Next steps
 
-1. Add a direct native text renderer or lighter text overlay path so Rust is
-   consistently faster on small/medium plots, not only functionally equivalent.
-2. Broaden image-similarity parity checks to fixture snapshots and larger
-   payloads, including hexbin-specific scatter cases.
-3. Tune the native PNG compression default. It is configurable through
-   `HEXAFE_PLOTSTATS_NATIVE_PNG_COMPRESSION`; current speed-first output is
-   fast but large.
-4. Fix maturin platform tagging/wheel packaging before publishing the native
-   package.
-5. Keep Matplotlib as the default backend until the native package is published
-   and parity thresholds are green.
+1. Run full local validation, renderer comparison, and updated benchmark
+   commands with the freshly built native wheel.
+2. Push the branch and verify the expanded GitHub CI matrix.
+3. Move native wheel publishing to a manylinux-backed release workflow before
+   exposing a PyPI `rust` extra.
+4. Keep Matplotlib as the default backend until native wheels are published and
+   parity thresholds stay green on CI.
 
 ## Known non-goals for this checkpoint
 
 - No metroliza integration changes yet.
 - No native package release/tag yet.
-- No GitHub push yet.
 - No package release/tag yet.

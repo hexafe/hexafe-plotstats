@@ -26,11 +26,11 @@ Keep Matplotlib as the default renderer while making the explicit Rust backend c
 - Add a fast mode that skips SVG debug geometry and keeps only text overlay work.
 - Evaluate direct Rust text drawing (`fontdue`/`ab_glyph` plus cached glyphs) if SVG text remains dominant.
 
-### 2. Render Modes and PNG Strategy
+### 2. Render Profiles and PNG Strategy
 
-- Add explicit native render profiles: `parity`, `fast`, and `debug`.
-- Keep `parity` as the default for tests and comparison fixtures.
-- In `fast`, use lower PNG compression and avoid metadata-heavy SVG output unless requested.
+- Add explicit native render profiles: `fast`, `compact`, and `debug`.
+- Keep `fast` as the Python default so Matplotlib remains the default figure backend while Rust PNG output is quick when explicitly selected.
+- In `fast`, avoid metadata-heavy SVG output unless text falls back to `resvg`; in `compact`, prefer smaller RGB/compressed PNGs; in `debug`, include SVG metadata.
 
 ### 3. Python-to-Rust Handoff
 
@@ -90,6 +90,14 @@ Keep Matplotlib as the default renderer while making the explicit Rust backend c
 - Milestone 2 update: RGB PNG output reduced bytes but slowed encoding, so RGBA/no-compression remains the default fast mode. `HEXAFE_PLOTSTATS_NATIVE_PNG_COLOR=rgb` is retained as a size-oriented option.
 - Milestone 4 update: raw RGBA PNG writes avoid the demultiply copy; histogram bar raster strokes were removed because they carried no statistical information and cost the dominant histogram substage. Long smooth histogram fit curves are decimated for native raster drawing while retaining first/last points and SVG/debug metadata.
 - Data-completeness update: modeled histogram overlay notes are now visible summary-table rows, and violin extrema are emitted as native-visible markers when `show_extrema` is enabled.
+- Next-phase update: modeled histogram overlay curves are now resolved as drawable `CurveSpec` primitives, including tail-fill-to-baseline regions. Histogram annotation rows now emit separate leader-line primitives with Metroliza-style row geometry.
+- Next-phase update: violin `sigma_policy` now emits explicit `+3 sigma` / `-3 sigma` line primitives, and native rendering preserves marker kind so min/max extrema render as distinct ticks instead of generic dots.
+- Native profile update: `render_*_png(..., profile="fast"|"compact"|"debug")` is wired through the Python API and resolved spec metadata. `fast` omits SVG metadata by default, `compact` uses RGB plus fast compression, and `debug` returns SVG metadata with balanced compression.
+- Benchmark update: `scripts/benchmark_renderers.py` now supports `--chart synthetic`, `--chart realistic`, individual realistic cases, and `--profile`. Realistic coverage includes Metroliza adapter histograms with modeled overlays, large process histograms, dense scatter, hexbin scatter, many-group IQR, and many-group violin.
+- CI update: native CI now builds a release wheel with locked Rust dependencies on Linux, macOS, and Windows, then runs native smoke/backend tests in direct-text mode and the `HEXAFE_PLOTSTATS_NATIVE_TEXT=resvg` fallback path. Linux CI also runs a benchmark smoke.
+- Latest synthetic benchmark medians with the rebuilt native wheel (`--chart synthetic --repeats 7 --warmups 2`): histogram Matplotlib 178.13 ms / Rust 8.05 ms; scatter 105.80 / 11.49; IQR 76.48 / 3.39; violin 197.12 / 37.92.
+- Latest realistic benchmark medians (`--chart realistic --repeats 5 --warmups 1`): Metroliza table histogram 212.56 / 10.66; Metroliza adapter histogram 152.64 / 10.65; large process histogram 200.60 / 7.11; dense scatter 332.38 / 94.46; hexbin scatter 828.92 / 139.78; many-group IQR 160.46 / 6.09; many-group violin 450.12 / 52.32. Rust beats Matplotlib on every measured realistic case.
+- Compact profile smoke: histogram Rust median 11.22 ms and 53,941 PNG bytes versus fast profile's 1,872,728 bytes; compact is size-oriented and intentionally trades some encoding time for much smaller output.
 - Final local validation:
   - `PYTHONPATH=/tmp/hexafe_plotstats_native_perf:src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats python -m pytest -q` -> 49 passed.
   - `PYTHONPATH=/tmp/hexafe_plotstats_native_perf:src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats python scripts/compare_renderers.py --output /tmp/hexafe_plotstats_renderer_comparisons --threshold 15` -> all five comparisons passed.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 
 from ...models.payloads import HistogramPayload
@@ -35,10 +36,17 @@ def render_histogram_matplotlib(payload: HistogramPayload) -> RenderResult:
         widths = np.diff(edges)
         ax.bar(edges[:-1], heights, width=widths, align="edge", alpha=0.8, color="tab:blue")
 
-    if payload.fit and payload.fit.curve is not None:
-        ax.plot(payload.fit.curve.x, payload.fit.curve.y, color="tab:orange", linewidth=1.5)
-    if payload.fit and payload.fit.kde_reference is not None:
-        ax.plot(payload.fit.kde_reference.x, payload.fit.kde_reference.y, color="tab:gray", linewidth=1.0, linestyle="--")
+    for curve in resolved.curves:
+        if curve.fill_to_baseline and curve.fill_alpha > 0.0:
+            ax.fill_between(curve.x, curve.y, 0.0, color=curve.fill_color or curve.stroke, alpha=curve.fill_alpha, linewidth=0.0)
+        ax.plot(
+            curve.x,
+            curve.y,
+            color=curve.stroke,
+            linewidth=curve.stroke_width,
+            linestyle="--" if curve.dash else "-",
+            alpha=curve.opacity,
+        )
 
     style_spec_limits(ax, payload.spec_limits)
     axis_labels = payload.metadata.get("axis_labels") if isinstance(payload.metadata.get("axis_labels"), dict) else {}
@@ -47,6 +55,18 @@ def render_histogram_matplotlib(payload: HistogramPayload) -> RenderResult:
     if payload.metadata.get("title"):
         ax.set_title(str(payload.metadata["title"]))
     apply_resolved_layout(fig, ax, resolved)
+    canvas = resolved.canvas.size
+    for line in resolved.annotation_lines:
+        fig.add_artist(
+            Line2D(
+                [line.x0 / canvas.width, line.x1 / canvas.width],
+                [1.0 - (line.y0 / canvas.height), 1.0 - (line.y1 / canvas.height)],
+                color=line.stroke,
+                linewidth=line.stroke_width,
+                alpha=0.72,
+                transform=fig.transFigure,
+            )
+        )
     _draw_resolved_table(fig, resolved)
     return RenderResult(fig=fig, ax=ax, metadata={"kind": "histogram", "warnings": payload.warnings})
 

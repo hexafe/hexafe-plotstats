@@ -79,8 +79,9 @@ fn render_chart(
     metadata.set_item("width", rendered.width)?;
     metadata.set_item("height", rendered.height)?;
     metadata.set_item("primitive_count", rendered.primitive_count)?;
-    metadata.set_item("png_compression", svg::png_compression_label())?;
-    metadata.set_item("png_color", svg::png_color_label())?;
+    metadata.set_item("render_profile", rendered.render_profile.label())?;
+    metadata.set_item("png_compression", rendered.png_compression)?;
+    metadata.set_item("png_color", rendered.png_color)?;
     if !rendered.svg.is_empty() {
         metadata.set_item("svg", rendered.svg)?;
     }

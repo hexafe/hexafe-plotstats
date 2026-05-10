@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import struct
 import zlib
+import os
 from collections.abc import Callable
 from io import BytesIO
 from typing import Any
@@ -289,8 +290,24 @@ def test_native_renderer_returns_valid_nonblank_png_or_skips_cleanly(
     assert_title_text_pixels_present(result.png_bytes)
     if "chart" in result.metadata:
         assert result.metadata["chart"] in {chart_name, chart_name.replace("_trend", "")}
-    assert str(result.metadata.get("svg", "")).startswith("<?xml")
+    assert result.metadata.get("render_profile") == "fast"
+    if os.environ.get("HEXAFE_PLOTSTATS_NATIVE_TEXT", "").lower() == "resvg":
+        assert str(result.metadata.get("svg", "")).startswith("<?xml")
+    else:
+        assert "svg" not in result.metadata
     assert result.metadata.get("png_compression") in {None, "none", "fastest", "fast", "balanced", "high"}
+
+
+def test_native_debug_profile_returns_svg_or_skips_cleanly() -> None:
+    if not native_backend_available():
+        pytest.skip("native renderer extension is unavailable")
+
+    payload = build_histogram_payload([1, 2, 3], metadata={"title": "Debug SVG"})
+    result = render_histogram_png(payload, profile="debug")
+
+    assert result.metadata.get("render_profile") == "debug"
+    assert str(result.metadata.get("svg", "")).startswith("<?xml")
+    assert result.metadata.get("png_compression") == "balanced"
 
 
 @pytest.mark.parametrize(("chart_name", "matplotlib_renderer", "rust_renderer", "payload"), _native_parity_cases())

@@ -94,6 +94,9 @@ class CurveSpec:
     dash: tuple[float, ...] = ()
     opacity: float = 1.0
     coordinate_space: str = "data"
+    fill_to_baseline: bool = False
+    fill_color: str | None = None
+    fill_alpha: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -214,6 +217,7 @@ class ResolvedHistogramSpec(ResolvedChartSpec):
     curves: tuple[CurveSpec, ...] = ()
     spec_lines: tuple[LineSpec, ...] = ()
     mean_line: LineSpec | None = None
+    annotation_lines: tuple[LineSpec, ...] = ()
     annotations: tuple[TextSpec, ...] = ()
     table: TableSpec | None = None
 

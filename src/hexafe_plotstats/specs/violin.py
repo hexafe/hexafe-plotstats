@@ -18,7 +18,8 @@ def violin_payload_to_resolved_spec(
     plot_rect = Rect(x=72.0, y=62.0, width=max(canvas.size.width - 104.0, 48.0), height=max(canvas.size.height - 118.0, 48.0))
     groups = _group_specs(payload)
     markers = _annotation_markers(groups, show_extrema=bool(payload.metadata.get("show_extrema")))
-    y_min, y_max = _y_range(payload, groups)
+    sigma_lines = _sigma_lines(payload, groups)
+    y_min, y_max = _y_range(payload, groups, sigma_lines)
 
     axes = (
         AxisSpec(
@@ -48,7 +49,7 @@ def violin_payload_to_resolved_spec(
         axes=axes,
         groups=groups,
         annotation_markers=markers,
-        spec_lines=_spec_lines(payload, y_min, y_max),
+        spec_lines=_spec_lines(payload, y_min, y_max) + sigma_lines,
         metadata={
             "group_count": len(groups),
             "spec_limits": _spec_limit_metadata(payload),
@@ -139,13 +140,15 @@ def _annotation_markers(groups: tuple[ViolinGroupSpec, ...], *, show_extrema: bo
     return tuple(markers)
 
 
-def _y_range(payload: ViolinPayload, groups: tuple[ViolinGroupSpec, ...]) -> tuple[float, float]:
+def _y_range(payload: ViolinPayload, groups: tuple[ViolinGroupSpec, ...], sigma_lines: tuple[LineSpec, ...] = ()) -> tuple[float, float]:
     values: list[float] = []
     for group in groups:
         values.extend(group.values)
         for value in (group.mean, group.q1, group.median, group.q3, group.minimum, group.maximum):
             if _is_finite_number(value):
                 values.append(float(value))
+    for line in sigma_lines:
+        values.extend((line.y0, line.y1))
 
     if payload.spec_limits is not None:
         for value in (payload.spec_limits.lsl, payload.spec_limits.nominal, payload.spec_limits.usl):
@@ -153,6 +156,47 @@ def _y_range(payload: ViolinPayload, groups: tuple[ViolinGroupSpec, ...]) -> tup
                 values.append(float(value))
 
     return _padded_range(values, default=(0.0, 1.0), pad_ratio=0.08)
+
+
+def _sigma_lines(payload: ViolinPayload, groups: tuple[ViolinGroupSpec, ...]) -> tuple[LineSpec, ...]:
+    policy = str(payload.metadata.get("sigma_policy") or "none")
+    if policy not in {"plus_3_sigma", "both_3_sigma"}:
+        return ()
+
+    lines: list[LineSpec] = []
+    for payload_group, group in zip(payload.groups, groups, strict=False):
+        mean = payload_group.summary.mean
+        std = payload_group.summary.std
+        if not (_is_finite_number(mean) and _is_finite_number(std)) or float(std) <= 0.0:
+            continue
+        mean_value = float(mean)
+        sigma = 3.0 * float(std)
+        x0 = group.position - 0.22
+        x1 = group.position + 0.22
+        candidates: tuple[tuple[str, float, str], ...]
+        if policy == "both_3_sigma":
+            candidates = (
+                ("sigma_lower", mean_value - sigma, "-3 sigma"),
+                ("sigma_upper", mean_value + sigma, "+3 sigma"),
+            )
+        else:
+            candidates = (("sigma_upper", mean_value + sigma, "+3 sigma"),)
+        for kind, y_value, label in candidates:
+            lines.append(
+                LineSpec(
+                    x0=x0,
+                    y0=y_value,
+                    x1=x1,
+                    y1=y_value,
+                    label=label,
+                    kind=kind,
+                    stroke="#7c3aed",
+                    stroke_width=0.9,
+                    dash=(2.0, 2.0),
+                    metadata={"group": group.label, "policy": policy},
+                )
+            )
+    return tuple(lines)
 
 
 def _spec_lines(payload: ViolinPayload, y_min: float, y_max: float) -> tuple[LineSpec, ...]:

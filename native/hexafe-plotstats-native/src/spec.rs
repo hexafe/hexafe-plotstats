@@ -90,12 +90,16 @@ pub struct CurveSpec {
     pub dash: Vec<f64>,
     pub opacity: f64,
     pub coordinate_space: String,
+    pub fill_to_baseline: bool,
+    pub fill_color: Option<String>,
+    pub fill_alpha: f64,
 }
 
 #[derive(Clone, Debug)]
 pub struct MarkerSpec {
     pub x: f64,
     pub y: f64,
+    pub kind: String,
     pub fill: String,
     pub stroke: String,
     pub size: f64,
@@ -170,6 +174,23 @@ pub struct TableSpec {
     pub rows: Vec<TableRow>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderProfile {
+    Fast,
+    Compact,
+    Debug,
+}
+
+impl RenderProfile {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Fast => "fast",
+            Self::Compact => "compact",
+            Self::Debug => "debug",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct CommonSpec {
     pub canvas: Size,
@@ -177,6 +198,7 @@ pub struct CommonSpec {
     pub title: Option<TextSpec>,
     pub plot_rect: Rect,
     pub axes: Vec<AxisSpec>,
+    pub render_profile: RenderProfile,
 }
 
 #[derive(Clone, Debug)]
@@ -187,6 +209,7 @@ pub struct HistogramSpec {
     pub curves: Vec<CurveSpec>,
     pub spec_lines: Vec<LineSpec>,
     pub mean_line: Option<LineSpec>,
+    pub annotation_lines: Vec<LineSpec>,
     pub annotations: Vec<TextSpec>,
     pub table: Option<TableSpec>,
 }
@@ -307,6 +330,10 @@ pub fn parse_histogram(value: &Value) -> RenderResult<HistogramSpec> {
             .map(parse_line)
             .collect::<RenderResult<Vec<_>>>()?,
         mean_line: optional_object(value.get("mean_line"), parse_line)?,
+        annotation_lines: array(value, "annotation_lines")?
+            .iter()
+            .map(parse_line)
+            .collect::<RenderResult<Vec<_>>>()?,
         annotations: array(value, "annotations")?
             .iter()
             .map(parse_text)
@@ -400,6 +427,7 @@ fn parse_common(value: &Value, expected_chart: &str) -> RenderResult<CommonSpec>
             "resolved spec canvas dimensions must be positive finite numbers".to_string(),
         ));
     }
+    let metadata = value.get("metadata");
     Ok(CommonSpec {
         canvas: Size { width, height },
         background: string(canvas, "background", "#ffffff")?,
@@ -409,7 +437,23 @@ fn parse_common(value: &Value, expected_chart: &str) -> RenderResult<CommonSpec>
             .iter()
             .map(parse_axis)
             .collect::<RenderResult<Vec<_>>>()?,
+        render_profile: parse_render_profile(
+            metadata
+                .and_then(|item| item.get("render_profile"))
+                .or_else(|| value.get("render_profile")),
+        )?,
     })
+}
+
+fn parse_render_profile(value: Option<&Value>) -> RenderResult<RenderProfile> {
+    match value.and_then(Value::as_str).unwrap_or("fast") {
+        "fast" => Ok(RenderProfile::Fast),
+        "compact" => Ok(RenderProfile::Compact),
+        "debug" => Ok(RenderProfile::Debug),
+        other => Err(RenderError::Invalid(format!(
+            "unsupported native render profile: {other}"
+        ))),
+    }
 }
 
 fn parse_axis(value: &Value) -> RenderResult<AxisSpec> {
@@ -493,6 +537,12 @@ fn parse_curve(value: &Value) -> RenderResult<CurveSpec> {
         dash: numbers(value.get("dash")),
         opacity: finite_number(value, "opacity", 1.0)?.clamp(0.0, 1.0),
         coordinate_space: string(value, "coordinate_space", "data")?,
+        fill_to_baseline: value
+            .get("fill_to_baseline")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        fill_color: string_option(value.get("fill_color")),
+        fill_alpha: finite_number(value, "fill_alpha", 0.0)?.clamp(0.0, 1.0),
     })
 }
 
@@ -500,6 +550,7 @@ fn parse_marker(value: &Value) -> RenderResult<MarkerSpec> {
     Ok(MarkerSpec {
         x: finite_number(value, "x", 0.0)?,
         y: finite_number(value, "y", 0.0)?,
+        kind: string(value, "kind", "point")?,
         fill: string(value, "fill", "#2563eb")?,
         stroke: string(value, "stroke", "#1d4ed8")?,
         size: finite_number(value, "size", 4.0)?.max(0.5),

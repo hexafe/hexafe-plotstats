@@ -170,6 +170,48 @@ def test_metroliza_native_histogram_payload_adapter_preserves_enriched_metadata(
     assert mapping["metadata"]["payload_metadata"]["modeled_overlay_rows"][0]["label"] == "Dashed KDE: descriptive only"
 
 
+def test_metroliza_native_histogram_payload_adapter_preserves_overlay_curves_and_leaders() -> None:
+    payload = histogram_from_metroliza_native_payload(
+        {
+            "values": [1.0, 2.0, 2.5, 3.0, 4.0],
+            "title": "Diameter",
+            "bin_count": 4,
+            "x_view": {"min": 0.0, "max": 5.0},
+            "limits": {"lsl": 0.5, "nominal": 2.5, "usl": 4.5},
+            "visual_metadata": {
+                "annotation_rows": [{"text": "USL", "kind": "usl", "x": 4.5, "row_index": 1, "text_y_axes": 1.05}],
+                "modeled_overlays": {
+                    "rows": [
+                        {"kind": "curve", "x": [0.0, 1.0, 2.0], "y": [0.0, 2.0, 0.0], "color": "#f97316", "linewidth": 1.4},
+                        {
+                            "kind": "curve",
+                            "x": [4.0, 4.5, 5.0],
+                            "y": [0.0, 0.4, 0.0],
+                            "color": "#dc2626",
+                            "fill_color": "#dc2626",
+                            "fill_alpha": 0.12,
+                            "fill_to_baseline": True,
+                            "alpha": 0.0,
+                        },
+                        {"kind": "curve_note", "label": "Dashed KDE: descriptive only"},
+                    ]
+                },
+            },
+        }
+    )
+
+    mapping = to_mapping(histogram_payload_to_resolved_spec(payload))
+
+    assert [curve["kind"] for curve in mapping["curves"]] == ["modeled_overlay", "modeled_overlay"]
+    assert mapping["curves"][1]["fill_to_baseline"] is True
+    assert mapping["curves"][1]["fill_color"] == "#dc2626"
+    assert mapping["curves"][1]["fill_alpha"] == 0.12
+    assert mapping["annotation_lines"][0]["kind"] == "annotation_leader"
+    assert mapping["annotation_lines"][0]["coordinate_space"] == "canvas"
+    assert mapping["annotations"][0]["metadata"]["box_y"] == 1.05
+    assert mapping["annotations"][1]["role"] == "curve_note"
+
+
 def test_renderer_backend_default_behavior_stays_matplotlib_first() -> None:
     assert inspect.signature(render_histogram).parameters["backend"].default == "matplotlib"
 
