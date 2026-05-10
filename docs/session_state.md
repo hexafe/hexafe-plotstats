@@ -198,6 +198,9 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
     `python -m compileall -q src tests scripts examples` -> passed;
     `cargo fmt --check`, `cargo check`, and `cargo test` in
     `native/hexafe-plotstats-native` -> passed.
+  - Added `.github/workflows/ci.yml` with two jobs:
+    pure-Python tests/compileall and native Rust renderer fmt/check/test/wheel
+    build/native-enabled pytest.
 - Feature branch committed and pushed:
   - branch: `codex/resolved-spec-rust-foundation`
   - commit: `Add resolved spec rust renderer foundation`
