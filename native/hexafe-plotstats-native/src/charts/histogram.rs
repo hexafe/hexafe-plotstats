@@ -3,12 +3,17 @@ use crate::svg::{
     draw_axes, draw_line_spec, draw_text_spec, finish_chart, render_surface, RasterCanvas,
     RenderedChart, SvgDocument,
 };
+use std::time::Instant;
 
 pub fn render(spec: &HistogramSpec) -> RenderResult<RenderedChart> {
+    let draw_start = Instant::now();
     let (mut svg, mut raster, width, height) = render_surface(&spec.common)?;
+    let axes_start = Instant::now();
     draw_axes(&mut svg, &mut raster, &spec.common);
+    let axes_ms = elapsed_ms(axes_start);
     let transform = ChartTransform::from_common(&spec.common);
 
+    let bars_start = Instant::now();
     for bar in &spec.bars {
         let p0 = transform.map(bar.x0, bar.y0);
         let p1 = transform.map(bar.x1, bar.y1);
@@ -19,9 +24,11 @@ pub fn render(spec: &HistogramSpec) -> RenderResult<RenderedChart> {
             height: (p0.y - p1.y).abs().max(1.0),
         };
         svg.rect(rect, &bar.fill, &bar.stroke, bar.opacity, 0.8);
-        raster.rect(rect, &bar.fill, &bar.stroke, bar.opacity, 0.8);
+        raster.rect(rect, &bar.fill, "none", bar.opacity, 0.0);
     }
+    let bars_ms = elapsed_ms(bars_start);
 
+    let curves_start = Instant::now();
     for curve in &spec.curves {
         let count = curve.x.len().min(curve.y.len());
         let points = (0..count)
@@ -43,9 +50,17 @@ pub fn render(spec: &HistogramSpec) -> RenderResult<RenderedChart> {
             &curve.dash,
             curve.opacity,
         );
-        raster.stroke_polyline(&points, &curve.stroke, curve.stroke_width, curve.opacity);
+        let raster_points = decimate_smooth_curve(&points);
+        raster.stroke_polyline(
+            &raster_points,
+            &curve.stroke,
+            curve.stroke_width,
+            curve.opacity,
+        );
     }
+    let curves_ms = elapsed_ms(curves_start);
 
+    let lines_start = Instant::now();
     for line in &spec.spec_lines {
         draw_line_spec(&mut svg, &mut raster, transform, line);
     }
@@ -55,10 +70,46 @@ pub fn render(spec: &HistogramSpec) -> RenderResult<RenderedChart> {
     for annotation in &spec.annotations {
         draw_text_spec(&mut svg, transform, annotation);
     }
+    let lines_ms = elapsed_ms(lines_start);
 
+    let table_start = Instant::now();
     draw_table(spec, &mut svg, &mut raster);
+    let table_ms = elapsed_ms(table_start);
 
-    finish_chart(svg, raster, width, height)
+    let mut rendered = finish_chart(svg, raster, width, height, draw_start)?;
+    rendered
+        .timings_ms
+        .push(("native_histogram_axes_ms".to_string(), axes_ms));
+    rendered
+        .timings_ms
+        .push(("native_histogram_bars_ms".to_string(), bars_ms));
+    rendered
+        .timings_ms
+        .push(("native_histogram_curves_ms".to_string(), curves_ms));
+    rendered
+        .timings_ms
+        .push(("native_histogram_lines_ms".to_string(), lines_ms));
+    rendered
+        .timings_ms
+        .push(("native_histogram_table_ms".to_string(), table_ms));
+    Ok(rendered)
+}
+
+fn elapsed_ms(start: Instant) -> f64 {
+    start.elapsed().as_secs_f64() * 1_000.0
+}
+
+fn decimate_smooth_curve(points: &[Point]) -> Vec<Point> {
+    if points.len() <= 180 {
+        return points.to_vec();
+    }
+    let mut decimated = Vec::with_capacity(points.len() / 2 + 2);
+    for (index, point) in points.iter().enumerate() {
+        if index == 0 || index + 1 == points.len() || index % 2 == 0 {
+            decimated.push(*point);
+        }
+    }
+    decimated
 }
 
 fn draw_table(spec: &HistogramSpec, svg: &mut SvgDocument, raster: &mut RasterCanvas) {

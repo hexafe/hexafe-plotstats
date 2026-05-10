@@ -62,6 +62,7 @@ class BenchmarkResult:
     mean_ms: float | None
     png_bytes: int | None
     note: str = ""
+    stage_ms: dict[str, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +153,15 @@ def _render_rust_png(case: ChartCase) -> int:
     return len(result.png_bytes)
 
 
+def _render_rust_stage_timings(case: ChartCase) -> dict[str, float]:
+    result = case.rust_renderer(case.payload)
+    _assert_png(result.png_bytes)
+    raw_timings = result.metadata.get("timings_ms", {})
+    if not isinstance(raw_timings, dict):
+        return {}
+    return {str(key): float(value) for key, value in raw_timings.items()}
+
+
 def _time_call(func: Callable[[], int], *, repeats: int, warmups: int) -> tuple[list[float], int]:
     last_size = 0
     for _ in range(warmups):
@@ -179,6 +189,7 @@ def _result_from_timings(
     warmups: int,
     timings: list[float],
     png_bytes: int,
+    stage_ms: dict[str, float] | None = None,
 ) -> BenchmarkResult:
     return BenchmarkResult(
         chart=chart,
@@ -190,6 +201,7 @@ def _result_from_timings(
         median_ms=statistics.median(timings),
         mean_ms=statistics.fmean(timings),
         png_bytes=png_bytes,
+        stage_ms=stage_ms,
     )
 
 
@@ -205,6 +217,7 @@ def _unavailable_result(*, chart: str, repeats: int, warmups: int, note: str) ->
         mean_ms=None,
         png_bytes=None,
         note=note,
+        stage_ms=None,
     )
 
 
@@ -237,6 +250,7 @@ def run_benchmarks(charts: list[str], *, repeats: int, warmups: int) -> list[Ben
             continue
 
         timings, png_bytes = _time_call(lambda case=case: _render_rust_png(case), repeats=repeats, warmups=warmups)
+        stage_ms = _render_rust_stage_timings(case)
         results.append(
             _result_from_timings(
                 chart=case.name,
@@ -245,13 +259,43 @@ def run_benchmarks(charts: list[str], *, repeats: int, warmups: int) -> list[Ben
                 warmups=warmups,
                 timings=timings,
                 png_bytes=png_bytes,
+                stage_ms=stage_ms,
             )
         )
     return results
 
 
+_STAGE_LABELS = (
+    ("py_resolve", "python_resolve_ms"),
+    ("py_json", "python_native_arg_ms"),
+    ("native_call", "python_native_call_ms"),
+    ("input", "native_input_decode_ms"),
+    ("parse", "native_resolved_parse_ms"),
+    ("draw", "native_draw_ms"),
+    ("text", "native_text_overlay_ms"),
+    ("png", "native_png_encode_ms"),
+    ("h_axes", "native_histogram_axes_ms"),
+    ("h_bars", "native_histogram_bars_ms"),
+    ("h_curves", "native_histogram_curves_ms"),
+    ("h_table", "native_histogram_table_ms"),
+)
+
+
+def _format_stages(stage_ms: dict[str, float] | None) -> str:
+    if not stage_ms:
+        return "-"
+    return " ".join(
+        f"{label}={stage_ms[key]:.1f}"
+        for label, key in _STAGE_LABELS
+        if key in stage_ms
+    )
+
+
 def _print_table(results: list[BenchmarkResult]) -> None:
-    header = f"{'chart':<10} {'backend':<11} {'available':<9} {'median_ms':>10} {'mean_ms':>10} {'min_ms':>10} {'png_bytes':>10} note"
+    header = (
+        f"{'chart':<10} {'backend':<11} {'available':<9} {'median_ms':>10} {'mean_ms':>10} "
+        f"{'min_ms':>10} {'png_bytes':>10} {'stages_ms':<96} note"
+    )
     print(header)
     print("-" * len(header))
     for result in results:
@@ -259,9 +303,10 @@ def _print_table(results: list[BenchmarkResult]) -> None:
         mean = f"{result.mean_ms:.2f}" if result.mean_ms is not None else "-"
         minimum = f"{result.min_ms:.2f}" if result.min_ms is not None else "-"
         png_bytes = str(result.png_bytes) if result.png_bytes is not None else "-"
+        stages = _format_stages(result.stage_ms)
         print(
             f"{result.chart:<10} {result.backend:<11} {str(result.available):<9} "
-            f"{median:>10} {mean:>10} {minimum:>10} {png_bytes:>10} {result.note}"
+            f"{median:>10} {mean:>10} {minimum:>10} {png_bytes:>10} {stages:<96} {result.note}"
         )
 
 

@@ -104,6 +104,17 @@ pub struct MarkerSpec {
 }
 
 #[derive(Clone, Debug)]
+pub struct MarkerBatchSpec {
+    pub x: Vec<f64>,
+    pub y: Vec<f64>,
+    pub fill: String,
+    pub stroke: String,
+    pub size: f64,
+    pub opacity: f64,
+    pub coordinate_space: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct HexCellSpec {
     pub points: Vec<Point>,
     pub count: usize,
@@ -184,6 +195,7 @@ pub struct HistogramSpec {
 pub struct ScatterSpec {
     pub common: CommonSpec,
     pub markers: Vec<MarkerSpec>,
+    pub marker_batches: Vec<MarkerBatchSpec>,
     pub hex_cells: Vec<HexCellSpec>,
     pub trend_line: Option<LineSpec>,
 }
@@ -309,6 +321,10 @@ pub fn parse_scatter(value: &Value) -> RenderResult<ScatterSpec> {
         markers: array(value, "markers")?
             .iter()
             .map(parse_marker)
+            .collect::<RenderResult<Vec<_>>>()?,
+        marker_batches: array(value, "marker_batches")?
+            .iter()
+            .map(parse_marker_batch)
             .collect::<RenderResult<Vec<_>>>()?,
         hex_cells: array(value, "hex_cells")?
             .iter()
@@ -484,6 +500,18 @@ fn parse_marker(value: &Value) -> RenderResult<MarkerSpec> {
     Ok(MarkerSpec {
         x: finite_number(value, "x", 0.0)?,
         y: finite_number(value, "y", 0.0)?,
+        fill: string(value, "fill", "#2563eb")?,
+        stroke: string(value, "stroke", "#1d4ed8")?,
+        size: finite_number(value, "size", 4.0)?.max(0.5),
+        opacity: finite_number(value, "opacity", 0.82)?.clamp(0.0, 1.0),
+        coordinate_space: string(value, "coordinate_space", "data")?,
+    })
+}
+
+fn parse_marker_batch(value: &Value) -> RenderResult<MarkerBatchSpec> {
+    Ok(MarkerBatchSpec {
+        x: numbers(value.get("x")),
+        y: numbers(value.get("y")),
         fill: string(value, "fill", "#2563eb")?,
         stroke: string(value, "stroke", "#1d4ed8")?,
         size: finite_number(value, "size", 4.0)?.max(0.5),

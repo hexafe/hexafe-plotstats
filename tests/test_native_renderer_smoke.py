@@ -289,7 +289,7 @@ def test_native_renderer_returns_valid_nonblank_png_or_skips_cleanly(
     assert_title_text_pixels_present(result.png_bytes)
     if "chart" in result.metadata:
         assert result.metadata["chart"] in {chart_name, chart_name.replace("_trend", "")}
-    assert "<text" in str(result.metadata.get("svg", ""))
+    assert str(result.metadata.get("svg", "")).startswith("<?xml")
     assert result.metadata.get("png_compression") in {None, "none", "fastest", "fast", "balanced", "high"}
 
 

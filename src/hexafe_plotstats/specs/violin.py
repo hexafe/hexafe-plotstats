@@ -17,7 +17,7 @@ def violin_payload_to_resolved_spec(
     canvas = Canvas(size=Size(width=_positive_dimension(width), height=_positive_dimension(height)))
     plot_rect = Rect(x=72.0, y=62.0, width=max(canvas.size.width - 104.0, 48.0), height=max(canvas.size.height - 118.0, 48.0))
     groups = _group_specs(payload)
-    markers = _annotation_markers(groups)
+    markers = _annotation_markers(groups, show_extrema=bool(payload.metadata.get("show_extrema")))
     y_min, y_max = _y_range(payload, groups)
 
     axes = (
@@ -106,15 +106,20 @@ def _body_points(values: tuple[float, ...], position: float, *, width: float = 0
     return left + right
 
 
-def _annotation_markers(groups: tuple[ViolinGroupSpec, ...]) -> tuple[MarkerSpec, ...]:
+def _annotation_markers(groups: tuple[ViolinGroupSpec, ...], *, show_extrema: bool = False) -> tuple[MarkerSpec, ...]:
     markers: list[MarkerSpec] = []
     for group in groups:
-        annotations = (
+        annotations: tuple[tuple[str, float | None, str, float], ...] = (
             ("mean", group.mean, "#111827", 5.0),
             ("median", group.median, "#f97316", 4.5),
             ("q1", group.q1, "#f97316", 3.5),
             ("q3", group.q3, "#f97316", 3.5),
         )
+        if show_extrema:
+            annotations = annotations + (
+                ("minimum", group.minimum, "#6b7280", 3.5),
+                ("maximum", group.maximum, "#6b7280", 3.5),
+            )
         for kind, value, fill, size in annotations:
             if not _is_finite_number(value):
                 continue

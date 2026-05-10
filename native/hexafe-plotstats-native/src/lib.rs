@@ -4,10 +4,12 @@ use pyo3::types::{
     PyAny, PyBool, PyBytes, PyDict, PyFloat, PyInt, PyList, PyNone, PyString, PyTuple,
 };
 use serde_json::{Map, Number, Value};
+use std::time::Instant;
 
 mod charts;
 mod spec;
 mod svg;
+mod text;
 
 #[pyfunction]
 fn render_histogram_png(py: Python<'_>, mapping: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
@@ -51,8 +53,24 @@ fn render_chart(
     chart: &str,
     renderer: fn(&Value) -> spec::RenderResult<svg::RenderedChart>,
 ) -> PyResult<Py<PyAny>> {
+    let total_start = Instant::now();
+    let input_start = Instant::now();
     let value = spec_from_python(mapping)?;
-    let rendered = renderer(&value).map_err(|error| PyValueError::new_err(error.to_string()))?;
+    let input_decode_ms = elapsed_ms(input_start);
+    let renderer_start = Instant::now();
+    let mut rendered =
+        renderer(&value).map_err(|error| PyValueError::new_err(error.to_string()))?;
+    let native_dispatch_ms = elapsed_ms(renderer_start);
+    let native_total_ms = elapsed_ms(total_start);
+    rendered
+        .timings_ms
+        .push(("native_input_decode_ms".to_string(), input_decode_ms));
+    rendered
+        .timings_ms
+        .push(("native_dispatch_ms".to_string(), native_dispatch_ms));
+    rendered
+        .timings_ms
+        .push(("native_total_ms".to_string(), native_total_ms));
 
     let metadata = PyDict::new(py);
     metadata.set_item("chart", chart)?;
@@ -62,9 +80,15 @@ fn render_chart(
     metadata.set_item("height", rendered.height)?;
     metadata.set_item("primitive_count", rendered.primitive_count)?;
     metadata.set_item("png_compression", svg::png_compression_label())?;
+    metadata.set_item("png_color", svg::png_color_label())?;
     if !rendered.svg.is_empty() {
         metadata.set_item("svg", rendered.svg)?;
     }
+    let timings = PyDict::new(py);
+    for (key, value) in &rendered.timings_ms {
+        timings.set_item(key, value)?;
+    }
+    metadata.set_item("timings_ms", timings)?;
 
     let result = PyDict::new(py);
     result.set_item(
@@ -74,6 +98,10 @@ fn render_chart(
     result.set_item("backend", "rust")?;
     result.set_item("metadata", metadata)?;
     Ok(result.into())
+}
+
+fn elapsed_ms(start: Instant) -> f64 {
+    start.elapsed().as_secs_f64() * 1_000.0
 }
 
 fn spec_from_python(value: &Bound<'_, PyAny>) -> PyResult<Value> {

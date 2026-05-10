@@ -2,8 +2,10 @@ use crate::spec::{ChartTransform, IqrSpec, Point, Rect, RenderResult};
 use crate::svg::{
     draw_axes, draw_line_spec, finish_chart, marker_point, render_surface, RenderedChart,
 };
+use std::time::Instant;
 
 pub fn render(spec: &IqrSpec) -> RenderResult<RenderedChart> {
+    let draw_start = Instant::now();
     let (mut svg, mut raster, width, height) = render_surface(&spec.common)?;
     draw_axes(&mut svg, &mut raster, &spec.common);
     let transform = ChartTransform::from_common(&spec.common);
@@ -88,5 +90,5 @@ pub fn render(spec: &IqrSpec) -> RenderResult<RenderedChart> {
         );
     }
 
-    finish_chart(svg, raster, width, height)
+    finish_chart(svg, raster, width, height, draw_start)
 }

@@ -5,7 +5,8 @@ from collections.abc import Mapping
 from dataclasses import is_dataclass
 from functools import lru_cache
 from importlib import import_module
-from typing import Any, NoReturn
+from time import perf_counter_ns
+from typing import Any, Callable, NoReturn
 
 from ...models.payloads import HistogramPayload, IQRPayload, ScatterPayload, ViolinPayload
 from ...models.render import ChartRenderResult
@@ -188,8 +189,56 @@ def _coerce_chart_result(value: Any, *, chart: str) -> ChartRenderResult:
 
 def _native_spec_argument(native_module: Any, mapping: Mapping[str, Any]) -> Mapping[str, Any] | str:
     if bool(getattr(native_module, "ACCEPTS_JSON_SPEC", False)):
-        return json.dumps(mapping, allow_nan=False, separators=(",", ":"), sort_keys=True)
+        return json.dumps(mapping, allow_nan=False, separators=(",", ":"))
     return mapping
+
+
+def _elapsed_ms(start_ns: int) -> float:
+    return (perf_counter_ns() - start_ns) / 1_000_000
+
+
+def _render_native_png(
+    payload: Any,
+    *,
+    chart: str,
+    native_function: str,
+    resolve_mapping: Callable[[Any], dict[str, Any]],
+) -> ChartRenderResult:
+    total_start = perf_counter_ns()
+    native_module = _load_native_module()
+    if native_module is None:
+        _unavailable(chart)
+
+    native_renderer = getattr(native_module, native_function, None)
+    if native_renderer is None:
+        _unavailable(chart)
+
+    resolve_start = perf_counter_ns()
+    mapping = resolve_mapping(payload)
+    python_resolve_ms = _elapsed_ms(resolve_start)
+
+    arg_start = perf_counter_ns()
+    native_argument = _native_spec_argument(native_module, mapping)
+    python_native_arg_ms = _elapsed_ms(arg_start)
+
+    call_start = perf_counter_ns()
+    result = _coerce_chart_result(native_renderer(native_argument), chart=chart)
+    python_native_call_ms = _elapsed_ms(call_start)
+    python_total_ms = _elapsed_ms(total_start)
+
+    metadata = dict(result.metadata)
+    raw_timings = metadata.get("timings_ms", {})
+    timings = dict(raw_timings) if isinstance(raw_timings, Mapping) else {}
+    timings.update(
+        {
+            "python_resolve_ms": python_resolve_ms,
+            "python_native_arg_ms": python_native_arg_ms,
+            "python_native_call_ms": python_native_call_ms,
+            "python_total_ms": python_total_ms,
+        }
+    )
+    metadata["timings_ms"] = timings
+    return ChartRenderResult(png_bytes=result.png_bytes, backend=result.backend, metadata=metadata)
 
 
 def render_histogram_rust(payload: HistogramPayload) -> ChartRenderResult:
@@ -209,65 +258,45 @@ def render_scatter_rust(payload: ScatterPayload) -> ChartRenderResult:
 
 
 def render_histogram_png(payload: HistogramPayload) -> ChartRenderResult:
-    native_module = _load_native_module()
-    if native_module is None:
-        _unavailable("histogram")
-
-    native_renderer = getattr(native_module, "render_histogram_png", None)
-    if native_renderer is None:
-        _unavailable("histogram")
-
-    mapping = _histogram_resolved_spec(payload)
-    return _coerce_chart_result(native_renderer(_native_spec_argument(native_module, mapping)), chart="histogram")
+    return _render_native_png(
+        payload,
+        chart="histogram",
+        native_function="render_histogram_png",
+        resolve_mapping=_histogram_resolved_spec,
+    )
 
 
 def render_violin_png(payload: ViolinPayload) -> ChartRenderResult:
-    native_module = _load_native_module()
-    if native_module is None:
-        _unavailable("violin")
-
-    native_renderer = getattr(native_module, "render_violin_png", None)
-    if native_renderer is None:
-        _unavailable("violin")
-
-    mapping = _violin_resolved_spec(payload)
-    return _coerce_chart_result(native_renderer(_native_spec_argument(native_module, mapping)), chart="violin")
+    return _render_native_png(
+        payload,
+        chart="violin",
+        native_function="render_violin_png",
+        resolve_mapping=_violin_resolved_spec,
+    )
 
 
 def render_iqr_png(payload: IQRPayload) -> ChartRenderResult:
-    native_module = _load_native_module()
-    if native_module is None:
-        _unavailable("iqr")
-
-    native_renderer = getattr(native_module, "render_iqr_png", None)
-    if native_renderer is None:
-        _unavailable("iqr")
-
-    mapping = _iqr_resolved_spec(payload)
-    return _coerce_chart_result(native_renderer(_native_spec_argument(native_module, mapping)), chart="iqr")
+    return _render_native_png(
+        payload,
+        chart="iqr",
+        native_function="render_iqr_png",
+        resolve_mapping=_iqr_resolved_spec,
+    )
 
 
 def render_scatter_png(payload: ScatterPayload) -> ChartRenderResult:
-    native_module = _load_native_module()
-    if native_module is None:
-        _unavailable("scatter")
-
-    native_renderer = getattr(native_module, "render_scatter_png", None)
-    if native_renderer is None:
-        _unavailable("scatter")
-
-    mapping = _scatter_resolved_spec(payload)
-    return _coerce_chart_result(native_renderer(_native_spec_argument(native_module, mapping)), chart="scatter")
+    return _render_native_png(
+        payload,
+        chart="scatter",
+        native_function="render_scatter_png",
+        resolve_mapping=_scatter_resolved_spec,
+    )
 
 
 def render_scatter_trend_png(payload: ScatterPayload) -> ChartRenderResult:
-    native_module = _load_native_module()
-    if native_module is None:
-        _unavailable("scatter trend")
-
-    native_renderer = getattr(native_module, "render_scatter_trend_png", None)
-    if native_renderer is None:
-        _unavailable("scatter trend")
-
-    mapping = _scatter_resolved_spec(payload)
-    return _coerce_chart_result(native_renderer(_native_spec_argument(native_module, mapping)), chart="scatter trend")
+    return _render_native_png(
+        payload,
+        chart="scatter trend",
+        native_function="render_scatter_trend_png",
+        resolve_mapping=_scatter_resolved_spec,
+    )

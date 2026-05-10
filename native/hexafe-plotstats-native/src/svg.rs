@@ -1,7 +1,9 @@
 use crate::spec::{
     ChartTransform, CommonSpec, LineSpec, Point, Rect, RenderError, RenderResult, TextSpec,
 };
+use crate::text;
 use std::sync::{Arc, OnceLock};
+use std::time::Instant;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 pub struct RenderedChart {
@@ -10,17 +12,32 @@ pub struct RenderedChart {
     pub width: u32,
     pub height: u32,
     pub primitive_count: usize,
+    pub timings_ms: Vec<(String, f64)>,
 }
 
 pub struct SvgDocument {
     buffer: String,
     primitive_count: usize,
     debug_shapes: bool,
+    svg_text_output: bool,
+    text_nodes: Vec<TextSpec>,
+}
+
+pub struct FinishedSvgDocument {
+    buffer: String,
+    primitive_count: usize,
+    debug_shapes: bool,
+    svg_text_output: bool,
+    text_nodes: Vec<TextSpec>,
 }
 
 impl SvgDocument {
     pub fn new(width: u32, height: u32, _background: &str) -> Self {
         let debug_shapes = std::env::var_os("HEXAFE_PLOTSTATS_NATIVE_DEBUG_SVG").is_some();
+        let svg_text_output = debug_shapes
+            || std::env::var("HEXAFE_PLOTSTATS_NATIVE_TEXT")
+                .map(|value| value.eq_ignore_ascii_case("resvg"))
+                .unwrap_or(false);
         let mut buffer = String::new();
         buffer.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
         buffer.push_str(&format!(
@@ -36,6 +53,8 @@ impl SvgDocument {
             buffer,
             primitive_count: 1,
             debug_shapes,
+            svg_text_output,
+            text_nodes: Vec::new(),
         }
     }
 
@@ -118,6 +137,10 @@ impl SvgDocument {
         ));
     }
 
+    pub fn marker_batch(&mut self, count: usize) {
+        self.primitive_count += count;
+    }
+
     pub fn polyline(
         &mut self,
         points: &[Point],
@@ -190,22 +213,33 @@ impl SvgDocument {
             return;
         }
         self.primitive_count += 1;
-        self.buffer.push_str(&format!(
-            r#"<text x="{}" y="{}" fill="{}" font-size="{}" font-family="sans-serif" font-weight="{}" text-anchor="{}" dominant-baseline="{}">{}</text>"#,
-            fmt(text.x),
-            fmt(text.y),
-            sanitize_color(&text.fill),
-            fmt(text.font_size),
-            escape(&text.weight),
-            anchor(&text.align),
-            baseline(&text.baseline),
-            escape(&text.text)
-        ));
+        self.text_nodes.push(text.clone());
+        if self.svg_text_output {
+            push_text_svg(&mut self.buffer, text);
+        }
     }
 
-    pub fn finish(mut self) -> (String, usize) {
-        self.buffer.push_str("</svg>");
-        (self.buffer, self.primitive_count)
+    pub fn finish(self) -> FinishedSvgDocument {
+        FinishedSvgDocument {
+            buffer: self.buffer,
+            primitive_count: self.primitive_count,
+            debug_shapes: self.debug_shapes,
+            svg_text_output: self.svg_text_output,
+            text_nodes: self.text_nodes,
+        }
+    }
+}
+
+impl FinishedSvgDocument {
+    fn build_svg(&self, include_text: bool) -> String {
+        let mut svg = self.buffer.clone();
+        if include_text && !self.svg_text_output {
+            for text in &self.text_nodes {
+                push_text_svg(&mut svg, text);
+            }
+        }
+        svg.push_str("</svg>");
+        svg
     }
 }
 
@@ -448,18 +482,25 @@ impl RasterCanvas {
     pub fn encode_png(self) -> RenderResult<Vec<u8>> {
         let width = self.pixmap.width();
         let height = self.pixmap.height();
-        let demultiplied = self.pixmap.take_demultiplied();
+        let rgb = png_rgb_output();
+        let raw = self.pixmap.data();
+        let rgb_data = if rgb { Some(rgba_to_rgb(raw)) } else { None };
+        let image_data = rgb_data.as_deref().unwrap_or(raw);
         let mut data = Vec::new();
         {
             let mut encoder = png::Encoder::new(&mut data, width, height);
-            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_color(if rgb {
+                png::ColorType::Rgb
+            } else {
+                png::ColorType::Rgba
+            });
             encoder.set_depth(png::BitDepth::Eight);
             encoder.set_compression(png_compression());
             let mut writer = encoder
                 .write_header()
                 .map_err(|exc| RenderError::Encode(exc.to_string()))?;
             writer
-                .write_image_data(&demultiplied)
+                .write_image_data(&image_data)
                 .map_err(|exc| RenderError::Encode(exc.to_string()))?;
         }
         Ok(data)
@@ -478,6 +519,10 @@ impl RasterCanvas {
         })?;
         resvg::render(&tree, Transform::identity(), &mut self.pixmap.as_mut());
         Ok(())
+    }
+
+    pub fn overlay_text(&mut self, texts: &[TextSpec]) -> RenderResult<bool> {
+        text::render_texts(&mut self.pixmap, texts)
     }
 }
 
@@ -512,17 +557,46 @@ pub fn finish_chart(
     mut raster: RasterCanvas,
     width: u32,
     height: u32,
+    draw_start: Instant,
 ) -> RenderResult<RenderedChart> {
-    let (svg, primitive_count) = svg.finish();
-    raster.overlay_svg(&svg)?;
+    let finish_start = Instant::now();
+    let finished_svg = svg.finish();
+    let svg_finish_ms = elapsed_ms(finish_start);
+    let draw_ms = elapsed_between_ms(draw_start, finish_start);
+    let text_start = Instant::now();
+    let direct_text =
+        !finished_svg.debug_shapes && raster.overlay_text(&finished_svg.text_nodes)?;
+    let svg = finished_svg.build_svg(!direct_text);
+    if !direct_text {
+        raster.overlay_svg(&svg)?;
+    }
+    let text_overlay_ms = elapsed_ms(text_start);
+    let png_start = Instant::now();
     let png_bytes = raster.encode_png()?;
+    let png_encode_ms = elapsed_ms(png_start);
+    let native_chart_render_ms = elapsed_ms(draw_start);
     Ok(RenderedChart {
         png_bytes,
         svg,
         width,
         height,
-        primitive_count,
+        primitive_count: finished_svg.primitive_count,
+        timings_ms: vec![
+            ("native_draw_ms".to_string(), draw_ms),
+            ("native_svg_finish_ms".to_string(), svg_finish_ms),
+            ("native_text_overlay_ms".to_string(), text_overlay_ms),
+            ("native_png_encode_ms".to_string(), png_encode_ms),
+            ("native_chart_render_ms".to_string(), native_chart_render_ms),
+        ],
     })
+}
+
+fn elapsed_ms(start: Instant) -> f64 {
+    elapsed_between_ms(start, Instant::now())
+}
+
+fn elapsed_between_ms(start: Instant, end: Instant) -> f64 {
+    end.duration_since(start).as_secs_f64() * 1_000.0
 }
 
 pub fn render_surface(common: &CommonSpec) -> RenderResult<(SvgDocument, RasterCanvas, u32, u32)> {
@@ -730,6 +804,20 @@ fn dash_attr(dash: &[f64]) -> String {
         .join(" ")
 }
 
+fn push_text_svg(buffer: &mut String, text: &TextSpec) {
+    buffer.push_str(&format!(
+        r#"<text x="{}" y="{}" fill="{}" font-size="{}" font-family="sans-serif" font-weight="{}" text-anchor="{}" dominant-baseline="{}">{}</text>"#,
+        fmt(text.x),
+        fmt(text.y),
+        sanitize_color(&text.fill),
+        fmt(text.font_size),
+        escape(&text.weight),
+        anchor(&text.align),
+        baseline(&text.baseline),
+        escape(&text.text)
+    ));
+}
+
 fn escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -814,6 +902,14 @@ pub fn png_compression_label() -> &'static str {
     }
 }
 
+pub fn png_color_label() -> &'static str {
+    if png_rgb_output() {
+        "rgb"
+    } else {
+        "rgba"
+    }
+}
+
 fn png_compression() -> png::Compression {
     match png_compression_label() {
         "fastest" => png::Compression::Fastest,
@@ -822,6 +918,20 @@ fn png_compression() -> png::Compression {
         "high" => png::Compression::High,
         _ => png::Compression::NoCompression,
     }
+}
+
+fn png_rgb_output() -> bool {
+    std::env::var("HEXAFE_PLOTSTATS_NATIVE_PNG_COLOR")
+        .map(|value| value.eq_ignore_ascii_case("rgb"))
+        .unwrap_or(false)
+}
+
+fn rgba_to_rgb(rgba: &[u8]) -> Vec<u8> {
+    let mut rgb = Vec::with_capacity(rgba.len() / 4 * 3);
+    for pixel in rgba.chunks_exact(4) {
+        rgb.extend_from_slice(&pixel[..3]);
+    }
+    rgb
 }
 
 fn blend_pixel(pixel: &mut [u8], red: u8, green: u8, blue: u8, opacity: f64) {

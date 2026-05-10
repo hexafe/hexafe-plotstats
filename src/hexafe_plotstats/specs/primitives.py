@@ -112,6 +112,20 @@ class MarkerSpec:
 
 
 @dataclass(frozen=True)
+class MarkerBatchSpec:
+    x: tuple[float, ...]
+    y: tuple[float, ...]
+    label: str = ""
+    kind: str = "point"
+    fill: str = "#2563eb"
+    stroke: str = "#1d4ed8"
+    size: float = 4.0
+    opacity: float = 0.82
+    coordinate_space: str = "data"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class HexCellSpec:
     points: tuple[tuple[float, float], ...]
     count: int
@@ -214,6 +228,7 @@ class ResolvedIQRSpec(ResolvedChartSpec):
 @dataclass(frozen=True)
 class ResolvedScatterSpec(ResolvedChartSpec):
     markers: tuple[MarkerSpec, ...] = ()
+    marker_batches: tuple[MarkerBatchSpec, ...] = ()
     hex_cells: tuple[HexCellSpec, ...] = ()
     trend_line: LineSpec | None = None
 

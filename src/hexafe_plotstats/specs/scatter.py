@@ -6,7 +6,20 @@ import numpy as np
 
 from ..models.payloads import ScatterPayload
 from .histogram import _finite_tuple, _format_number, _padded_range, _positive_dimension, _ticks
-from .primitives import AxisSpec, Canvas, HexCellSpec, LineSpec, MarkerSpec, Rect, ResolvedScatterSpec, Size, TextSpec
+from .primitives import (
+    AxisSpec,
+    Canvas,
+    HexCellSpec,
+    LineSpec,
+    MarkerBatchSpec,
+    MarkerSpec,
+    Rect,
+    ResolvedScatterSpec,
+    Size,
+    TextSpec,
+)
+
+_MARKER_BATCH_THRESHOLD = 256
 
 
 def scatter_payload_to_resolved_spec(
@@ -18,7 +31,8 @@ def scatter_payload_to_resolved_spec(
     canvas = Canvas(size=Size(width=_positive_dimension(width), height=_positive_dimension(height)))
     plot_rect = Rect(x=72.0, y=62.0, width=max(canvas.size.width - 104.0, 48.0), height=max(canvas.size.height - 118.0, 48.0))
     point_pairs = _point_pairs(payload)
-    markers = _marker_specs(payload, point_pairs) if payload.mode != "hexbin" else ()
+    markers = _marker_specs(payload, point_pairs) if _use_marker_specs(payload, point_pairs) else ()
+    marker_batches = _marker_batch_specs(payload, point_pairs) if _use_marker_batches(payload, point_pairs) else ()
     trend_line = _trend_line(payload)
     x_min, x_max = _axis_range(tuple(point[0] for point in point_pairs), trend_line, axis="x")
     y_min, y_max = _axis_range(tuple(point[1] for point in point_pairs), trend_line, axis="y")
@@ -50,6 +64,7 @@ def scatter_payload_to_resolved_spec(
         plot_rect=plot_rect,
         axes=axes,
         markers=markers,
+        marker_batches=marker_batches,
         hex_cells=hex_cells,
         trend_line=trend_line,
         metadata={
@@ -86,6 +101,32 @@ def _marker_specs(payload: ScatterPayload, points: tuple[tuple[float, float], ..
         )
         for index, (x, y) in enumerate(points)
     )
+
+
+def _marker_batch_specs(payload: ScatterPayload, points: tuple[tuple[float, float], ...]) -> tuple[MarkerBatchSpec, ...]:
+    if not points:
+        return ()
+    return (
+        MarkerBatchSpec(
+            x=tuple(point[0] for point in points),
+            y=tuple(point[1] for point in points),
+            label=f"{len(points)} points",
+            kind=payload.mode,
+            fill="#2563eb",
+            stroke="#1d4ed8" if payload.edgecolors != "none" else "none",
+            size=payload.marker_size,
+            opacity=payload.alpha,
+            metadata={"count": len(points)},
+        ),
+    )
+
+
+def _use_marker_specs(payload: ScatterPayload, points: tuple[tuple[float, float], ...]) -> bool:
+    return payload.mode != "hexbin" and len(points) <= _MARKER_BATCH_THRESHOLD
+
+
+def _use_marker_batches(payload: ScatterPayload, points: tuple[tuple[float, float], ...]) -> bool:
+    return payload.mode != "hexbin" and len(points) > _MARKER_BATCH_THRESHOLD
 
 
 def _hex_cells(

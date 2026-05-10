@@ -159,8 +159,13 @@ def test_metroliza_native_histogram_payload_adapter_preserves_enriched_metadata(
     assert mapping["axes"][1]["label"] == "Count"
     assert mapping["axes"][0]["minimum"] == 0.0
     assert mapping["axes"][0]["maximum"] == 5.0
-    assert [row["cells"][0]["text"] for row in mapping["table"]["rows"]] == ["Count", "Model"]
+    assert [row["cells"][0]["text"] for row in mapping["table"]["rows"]] == [
+        "Count",
+        "Model",
+        "Dashed KDE: descriptive only",
+    ]
     assert mapping["table"]["rows"][1]["metadata"]["section_break_before"] is True
+    assert mapping["table"]["rows"][2]["metadata"]["source"] == "modeled_overlay_rows"
     assert mapping["annotations"][0]["text"] == "LSL"
     assert mapping["metadata"]["payload_metadata"]["modeled_overlay_rows"][0]["label"] == "Dashed KDE: descriptive only"
 

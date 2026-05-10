@@ -285,7 +285,7 @@ def _table_spec(payload: HistogramPayload, rect: Rect) -> TableSpec:
             metadata=dict(row.metadata),
         )
         for row in payload.table_rows
-    )
+    ) + _modeled_overlay_table_rows(payload)
     return TableSpec(
         rect=rect,
         rows=rows,
@@ -295,6 +295,36 @@ def _table_spec(payload: HistogramPayload, rect: Rect) -> TableSpec:
             TableCell(text="Value", kind="header", align="right"),
         ),
     )
+
+
+def _modeled_overlay_table_rows(payload: HistogramPayload) -> tuple[TableRow, ...]:
+    raw_rows = payload.metadata.get("modeled_overlay_rows")
+    if not isinstance(raw_rows, (list, tuple)):
+        return ()
+
+    rows: list[TableRow] = []
+    for index, raw in enumerate(raw_rows):
+        if not isinstance(raw, dict):
+            continue
+        label = str(raw.get("label") or raw.get("text") or raw.get("kind") or "").strip()
+        if not label:
+            continue
+        value = str(raw.get("value") or raw.get("note") or "")
+        rows.append(
+            TableRow(
+                cells=(
+                    TableCell(text=label, kind="label", align="left"),
+                    TableCell(text=value, kind="value", align="right"),
+                ),
+                kind=str(raw.get("kind") or "modeled_overlay"),
+                metadata={
+                    "section_break_before": bool(raw.get("section_break_before", index == 0)),
+                    "source": "modeled_overlay_rows",
+                    "raw": dict(raw),
+                },
+            )
+        )
+    return tuple(rows)
 
 
 def _annotations(payload: HistogramPayload) -> tuple[TextSpec, ...]:

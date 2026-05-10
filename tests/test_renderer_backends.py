@@ -208,7 +208,16 @@ def test_histogram_native_dispatch_receives_resolved_mapping(monkeypatch) -> Non
 
     result = render_histogram_png(payload)
 
-    assert result == ChartRenderResult(png_bytes=b"png", backend="rust", metadata={"chart": "histogram", "source": "test"})
+    assert result.png_bytes == b"png"
+    assert result.backend == "rust"
+    assert result.metadata["chart"] == "histogram"
+    assert result.metadata["source"] == "test"
+    assert set(result.metadata["timings_ms"]) == {
+        "python_native_arg_ms",
+        "python_native_call_ms",
+        "python_resolve_ms",
+        "python_total_ms",
+    }
     assert isinstance(captured["mapping"], dict)
     assert captured["mapping"] == to_mapping(histogram_payload_to_resolved_spec(payload))
 
