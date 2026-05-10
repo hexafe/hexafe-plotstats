@@ -13,6 +13,7 @@ matplotlib.use("Agg", force=True)
 from hexafe_plotstats.adapters import (
     capability,
     fit_distribution,
+    histogram_from_metroliza_native_payload,
     histogram_payload,
     render_histogram,
     render_scatter,
@@ -24,9 +25,11 @@ from hexafe_plotstats.adapters import (
 )
 from hexafe_plotstats.renderers import RendererBackendUnavailable
 from hexafe_plotstats.renderers import render_histogram_png
+from hexafe_plotstats.renderers.rust import native_backend_available
 from hexafe_plotstats.specs import histogram_payload_to_resolved_spec, to_mapping
 from hexafe_plotstats.adapters.pandas import series_summary
 from hexafe_plotstats.models.common import DistributionConfig, ScatterConfig, SpecLimits
+from hexafe_plotstats.stats.capability import compute_capability
 
 
 def test_support_profile_kinds() -> None:
@@ -51,6 +54,33 @@ def test_summary_and_capability_use_spec_limits() -> None:
     assert cap.cp >= cap.cpk
 
 
+def test_capability_handles_missing_and_one_sided_spec_limits() -> None:
+    values = [1.0, 2.0, 3.0]
+
+    no_limits = compute_capability(values)
+    lower_only = compute_capability(values, SpecLimits(lsl=0.0))
+    upper_only = compute_capability(values, SpecLimits(usl=10.0))
+    two_sided = compute_capability(values, SpecLimits(lsl=0.0, usl=10.0))
+
+    assert no_limits.cp is None
+    assert no_limits.cpk is None
+    assert no_limits.sample_std == pytest.approx(1.0)
+    assert "no specification limits supplied" in no_limits.warnings
+
+    assert lower_only.cp is None
+    assert lower_only.cpl == pytest.approx(2.0 / 3.0)
+    assert lower_only.cpu is None
+    assert lower_only.cpk == pytest.approx(lower_only.cpl)
+
+    assert upper_only.cp is None
+    assert upper_only.cpl is None
+    assert upper_only.cpu == pytest.approx(8.0 / 3.0)
+    assert upper_only.cpk == pytest.approx(upper_only.cpu)
+
+    assert two_sided.cp == pytest.approx(10.0 / 6.0)
+    assert two_sided.cpk == pytest.approx(lower_only.cpl)
+
+
 def test_distribution_fit_selects_reasonable_candidate() -> None:
     values = np.array([-1.5, -0.7, -0.2, 0.0, 0.4, 0.9, 1.3, 2.1, 2.8, 3.5])
     result = fit_distribution(values, SpecLimits(lsl=-2.0, usl=4.0), DistributionConfig(kde_points=64))
@@ -68,9 +98,12 @@ def test_histogram_payload_includes_fit_and_rows() -> None:
 
     assert payload.summary.count == 8
     assert payload.fit is not None
+    assert payload.normality is not None
     assert payload.bin_edges
     assert payload.bin_values
-    assert any(row.label == "count" for row in payload.table_rows)
+    labels = [row.label for row in payload.table_rows]
+    assert labels[:5] == ["Min", "Max", "Mean", "Median", "Std Dev"]
+    assert {"Cp", "Cpk", "NOK", "NOK %", "Samples", "Model", "Fit quality"}.issubset(labels)
 
 
 def test_histogram_resolved_spec_mapping_tracks_payload_parity_contract() -> None:
@@ -82,10 +115,54 @@ def test_histogram_resolved_spec_mapping_tracks_payload_parity_contract() -> Non
     assert mapping["chart_type"] == "histogram"
     assert mapping["bars"][0]["x0"] == pytest.approx(payload.bin_edges[0])
     assert mapping["bars"][-1]["x1"] == pytest.approx(payload.bin_edges[-1])
-    assert mapping["table"]["rows"][0]["cells"][0]["text"] == "count"
+    assert mapping["table"]["rows"][0]["cells"][0]["text"] == "Min"
+    assert mapping["table"]["rows"][0]["cells"][1]["text"] == "1.000"
     assert mapping["metadata"]["spec_limits"]["lsl"] == 0.8
     assert mapping["metadata"]["spec_limits"]["usl"] == 2.2
+    assert mapping["metadata"]["normality"]["method"] in {"shapiro", "normaltest"}
     assert json.loads(json.dumps(mapping)) == mapping
+
+
+def test_metroliza_native_histogram_payload_adapter_preserves_enriched_metadata() -> None:
+    payload = histogram_from_metroliza_native_payload(
+        {
+            "values": [1.0, 2.0, 2.5, 3.0, 4.0],
+            "title": "Diameter",
+            "bin_count": 4,
+            "x_view": {"min": 0.0, "max": 5.0},
+            "limits": {"lsl": 0.5, "nominal": 2.5, "usl": 4.5},
+            "style": {"axis_label_x": "Measurement", "axis_label_y": "Count"},
+            "mean_line": {"value": 2.5, "color": "#111111", "linewidth": 1.3, "dash": [8, 5]},
+            "summary_table_rows": [
+                {"label": "Count", "value": "5", "row_kind": "summary_metric"},
+                {"label": "Model", "value": "Normal", "row_kind": "summary_metric", "section_break_before": True},
+            ],
+            "visual_metadata": {
+                "summary_stats_table": {"title": "Parameter"},
+                "annotation_rows": [{"text": "LSL", "kind": "lsl", "x": 0.5, "row_index": 0}],
+                "specification_lines": [
+                    {"id": "lsl", "label": "LSL", "value": 0.5, "enabled": True},
+                    {"id": "nominal", "label": "Nominal", "value": 2.5, "enabled": True},
+                    {"id": "usl", "label": "USL", "value": 4.5, "enabled": True},
+                ],
+                "modeled_overlays": {"rows": [{"kind": "curve_note", "label": "Dashed KDE: descriptive only"}]},
+            },
+        }
+    )
+
+    mapping = to_mapping(histogram_payload_to_resolved_spec(payload))
+
+    assert payload.density is False
+    assert len(payload.bin_values) == 4
+    assert mapping["title"]["text"] == "Diameter"
+    assert mapping["axes"][0]["label"] == "Measurement"
+    assert mapping["axes"][1]["label"] == "Count"
+    assert mapping["axes"][0]["minimum"] == 0.0
+    assert mapping["axes"][0]["maximum"] == 5.0
+    assert [row["cells"][0]["text"] for row in mapping["table"]["rows"]] == ["Count", "Model"]
+    assert mapping["table"]["rows"][1]["metadata"]["section_break_before"] is True
+    assert mapping["annotations"][0]["text"] == "LSL"
+    assert mapping["metadata"]["payload_metadata"]["modeled_overlay_rows"][0]["label"] == "Dashed KDE: descriptive only"
 
 
 def test_renderer_backend_default_behavior_stays_matplotlib_first() -> None:
@@ -138,15 +215,25 @@ def test_renderer_backend_selection_defaults_to_matplotlib_and_exposes_rust() ->
     assert result.metadata["kind"] == "histogram"
     result.fig.clf()
 
-    with pytest.raises(RendererBackendUnavailable):
-        render_histogram(hist, backend="rust")
+    if native_backend_available():
+        rust_result = render_histogram(hist, backend="rust")
+        assert rust_result.backend == "rust"
+        assert rust_result.png_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    else:
+        with pytest.raises(RendererBackendUnavailable):
+            render_histogram(hist, backend="rust")
 
 
 def test_render_histogram_png_unavailable_behavior() -> None:
     payload = histogram_payload([1, 2, 3, 4, 5], SpecLimits(lsl=0.5, usl=5.5))
 
-    with pytest.raises(RendererBackendUnavailable, match="rust renderer for histogram is not installed yet"):
-        render_histogram_png(payload)
+    if native_backend_available():
+        result = render_histogram_png(payload)
+        assert result.backend == "rust"
+        assert result.png_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    else:
+        with pytest.raises(RendererBackendUnavailable, match="rust renderer for histogram is not installed yet"):
+            render_histogram_png(payload)
 
 
 def test_pandas_adapter_if_installed() -> None:

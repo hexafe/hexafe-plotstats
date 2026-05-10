@@ -9,4 +9,4 @@ build/
 dist/
 htmlcov/
 .coverage
-
+native/*/target/

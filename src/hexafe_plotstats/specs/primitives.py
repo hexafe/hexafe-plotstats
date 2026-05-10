@@ -98,6 +98,65 @@ class CurveSpec:
 
 
 @dataclass(frozen=True)
+class MarkerSpec:
+    x: float
+    y: float
+    label: str = ""
+    kind: str = "point"
+    fill: str = "#2563eb"
+    stroke: str = "#1d4ed8"
+    size: float = 4.0
+    opacity: float = 0.82
+    coordinate_space: str = "data"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class HexCellSpec:
+    points: tuple[tuple[float, float], ...]
+    count: int
+    label: str = ""
+    fill: str = "#2563eb"
+    stroke: str = "#ffffff"
+    opacity: float = 0.72
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class BoxPlotSpec:
+    label: str
+    position: float
+    lower_whisker: float | None
+    q1: float | None
+    median: float | None
+    q3: float | None
+    upper_whisker: float | None
+    outliers: tuple[float, ...] = ()
+    fill: str = "#2563eb"
+    stroke: str = "#1d4ed8"
+    opacity: float = 0.62
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ViolinGroupSpec:
+    label: str
+    position: float
+    values: tuple[float, ...]
+    mean: float | None = None
+    q1: float | None = None
+    median: float | None = None
+    q3: float | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    fill: str = "#2563eb"
+    stroke: str = "#1d4ed8"
+    opacity: float = 0.72
+    body_points: tuple[tuple[float, float], ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class TableCell:
     text: str
     kind: str = "value"
@@ -129,6 +188,7 @@ class ResolvedChartSpec:
     title: TextSpec | None
     plot_rect: Rect
     axes: tuple[AxisSpec, ...]
+    schema_version: int = 1
     warnings: tuple[str, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -140,4 +200,26 @@ class ResolvedHistogramSpec(ResolvedChartSpec):
     curves: tuple[CurveSpec, ...] = ()
     spec_lines: tuple[LineSpec, ...] = ()
     mean_line: LineSpec | None = None
+    annotations: tuple[TextSpec, ...] = ()
     table: TableSpec | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedIQRSpec(ResolvedChartSpec):
+    boxes: tuple[BoxPlotSpec, ...] = ()
+    outlier_markers: tuple[MarkerSpec, ...] = ()
+    spec_lines: tuple[LineSpec, ...] = ()
+
+
+@dataclass(frozen=True)
+class ResolvedScatterSpec(ResolvedChartSpec):
+    markers: tuple[MarkerSpec, ...] = ()
+    hex_cells: tuple[HexCellSpec, ...] = ()
+    trend_line: LineSpec | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedViolinSpec(ResolvedChartSpec):
+    groups: tuple[ViolinGroupSpec, ...] = ()
+    annotation_markers: tuple[MarkerSpec, ...] = ()
+    spec_lines: tuple[LineSpec, ...] = ()

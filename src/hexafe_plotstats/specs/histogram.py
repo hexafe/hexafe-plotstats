@@ -41,11 +41,12 @@ def histogram_payload_to_resolved_spec(
 
     x_min, x_max = _x_range(payload, bars, curves)
     y_min, y_max = _y_range(bars, curves)
+    axis_labels = _axis_labels(payload)
 
     axes = (
         AxisSpec(
             orientation="x",
-            label="value",
+            label=axis_labels["x"],
             minimum=x_min,
             maximum=x_max,
             tick_values=_ticks(x_min, x_max),
@@ -53,7 +54,7 @@ def histogram_payload_to_resolved_spec(
         ),
         AxisSpec(
             orientation="y",
-            label="density" if payload.density else "count",
+            label=axis_labels["y"],
             minimum=y_min,
             maximum=y_max,
             tick_values=_ticks(y_min, y_max),
@@ -63,13 +64,14 @@ def histogram_payload_to_resolved_spec(
 
     spec_lines = _spec_lines(payload, y_max)
     mean_line = _mean_line(payload, y_max)
+    annotations = _annotations(payload)
     table = _table_spec(payload, table_rect)
 
     return ResolvedHistogramSpec(
         chart_type="histogram",
         canvas=canvas,
         title=TextSpec(
-            text="Histogram",
+            text=str(payload.metadata.get("title") or "Histogram"),
             x=36.0,
             y=28.0,
             font_size=18.0,
@@ -83,9 +85,10 @@ def histogram_payload_to_resolved_spec(
         curves=curves,
         spec_lines=spec_lines,
         mean_line=mean_line,
+        annotations=annotations,
         table=table,
         warnings=_warnings(payload),
-        metadata=_metadata(payload),
+        metadata={**_metadata(payload), "axis_labels": axis_labels},
     )
 
 
@@ -162,6 +165,13 @@ def _curve_spec(curve: Any, *, kind: str, stroke: str, width: float, dash: tuple
 
 
 def _x_range(payload: HistogramPayload, bars: tuple[BarSpec, ...], curves: tuple[CurveSpec, ...]) -> tuple[float, float]:
+    x_view = payload.metadata.get("x_view")
+    if isinstance(x_view, dict):
+        minimum = x_view.get("min")
+        maximum = x_view.get("max")
+        if _is_finite_number(minimum) and _is_finite_number(maximum) and float(minimum) != float(maximum):
+            return float(minimum), float(maximum)
+
     values: list[float] = []
     values.extend(value for bar in bars for value in (bar.x0, bar.x1))
     for curve in curves:
@@ -186,6 +196,11 @@ def _y_range(bars: tuple[BarSpec, ...], curves: tuple[CurveSpec, ...]) -> tuple[
 
 
 def _spec_lines(payload: HistogramPayload, y_max: float) -> tuple[LineSpec, ...]:
+    custom_lines = payload.metadata.get("specification_lines")
+    if isinstance(custom_lines, (list, tuple)):
+        lines = tuple(_custom_spec_line(item, y_max) for item in custom_lines if isinstance(item, dict))
+        return tuple(line for line in lines if line is not None)
+
     lines: list[LineSpec] = []
     specs = (
         ("lsl", payload.spec_limits.lsl, "#dc2626", "LSL", (6.0, 4.0)),
@@ -212,25 +227,54 @@ def _spec_lines(payload: HistogramPayload, y_max: float) -> tuple[LineSpec, ...]
     return tuple(lines)
 
 
+def _custom_spec_line(raw: dict[str, Any], y_max: float) -> LineSpec | None:
+    if raw.get("enabled") is False:
+        return None
+    value = raw.get("value")
+    if not _is_finite_number(value):
+        return None
+    role = str(raw.get("id") or raw.get("role") or raw.get("kind") or "spec")
+    label = str(raw.get("label") or role.upper())
+    style = raw.get("style_hint") if isinstance(raw.get("style_hint"), dict) else {}
+    dash = raw.get("dash") if isinstance(raw.get("dash"), (list, tuple)) else ()
+    return LineSpec(
+        x0=float(value),
+        y0=0.0,
+        x1=float(value),
+        y1=y_max,
+        label=label,
+        kind=f"spec_{role}",
+        stroke=str(raw.get("color") or style.get("color") or "#dc2626"),
+        stroke_width=float(raw.get("width") or style.get("linewidth") or 1.0),
+        dash=tuple(float(item) for item in dash),
+        metadata={"source": "metadata", "raw": dict(raw)},
+    )
+
+
 def _mean_line(payload: HistogramPayload, y_max: float) -> LineSpec | None:
-    if not _is_finite_number(payload.summary.mean):
+    mean_meta = payload.metadata.get("mean_line") if isinstance(payload.metadata.get("mean_line"), dict) else {}
+    value = mean_meta.get("value", payload.summary.mean)
+    if not _is_finite_number(value):
         return None
 
-    mean = float(payload.summary.mean)
+    mean = float(value)
+    dash = mean_meta.get("dash") if isinstance(mean_meta.get("dash"), (list, tuple)) else (4.0, 2.0)
     return LineSpec(
         x0=mean,
         y0=0.0,
         x1=mean,
         y1=y_max,
-        label="Mean",
+        label=str(mean_meta.get("label") or "Mean"),
         kind="mean",
-        stroke="#111827",
-        stroke_width=1.0,
-        dash=(4.0, 2.0),
+        stroke=str(mean_meta.get("color") or "#111827"),
+        stroke_width=float(mean_meta.get("linewidth") or mean_meta.get("stroke_width") or 1.0),
+        dash=tuple(float(item) for item in dash),
+        metadata={"source": "metadata" if mean_meta else "summary"},
     )
 
 
 def _table_spec(payload: HistogramPayload, rect: Rect) -> TableSpec:
+    table_title = str(payload.metadata.get("table_title") or payload.metadata.get("summary_table_title") or "Metric")
     rows = tuple(
         TableRow(
             cells=(
@@ -238,6 +282,7 @@ def _table_spec(payload: HistogramPayload, rect: Rect) -> TableSpec:
                 TableCell(text=str(row.value), kind="value", align="right"),
             ),
             kind=row.kind,
+            metadata=dict(row.metadata),
         )
         for row in payload.table_rows
     )
@@ -246,16 +291,62 @@ def _table_spec(payload: HistogramPayload, rect: Rect) -> TableSpec:
         rows=rows,
         column_widths=(0.58, 0.42),
         header=(
-            TableCell(text="Metric", kind="header", align="left"),
+            TableCell(text=table_title, kind="header", align="left"),
             TableCell(text="Value", kind="header", align="right"),
         ),
     )
+
+
+def _annotations(payload: HistogramPayload) -> tuple[TextSpec, ...]:
+    raw_annotations = payload.metadata.get("annotation_rows")
+    if not isinstance(raw_annotations, (list, tuple)):
+        return ()
+
+    annotations: list[TextSpec] = []
+    for index, raw in enumerate(raw_annotations):
+        if not isinstance(raw, dict):
+            continue
+        text = str(raw.get("text") or raw.get("label") or "").strip()
+        x_value = raw.get("x")
+        if not text or not _is_finite_number(x_value):
+            continue
+        row_index = int(raw.get("row_index") or index)
+        annotations.append(
+            TextSpec(
+                text=text,
+                x=float(x_value),
+                y=float(raw.get("text_y_axes") or (1.01 + (row_index * 0.045))),
+                font_size=float(raw.get("font_size") or 9.0),
+                fill=str(raw.get("color") or "#111827"),
+                align=str((raw.get("placement_hint") or {}).get("ha") or "center")
+                if isinstance(raw.get("placement_hint"), dict)
+                else "center",
+                baseline="bottom",
+                role=str(raw.get("kind") or "histogram_annotation"),
+                metadata={"coordinate_space": {"x": "data", "y": "axes"}, "row_index": row_index, "raw": dict(raw)},
+            )
+        )
+    return tuple(annotations)
+
+
+def _axis_labels(payload: HistogramPayload) -> dict[str, str]:
+    axis_labels = payload.metadata.get("axis_labels")
+    if isinstance(axis_labels, dict):
+        return {
+            "x": str(axis_labels.get("x") or "value"),
+            "y": str(axis_labels.get("y") or ("density" if payload.density else "count")),
+        }
+    return {
+        "x": str(payload.metadata.get("x_label") or "value"),
+        "y": str(payload.metadata.get("y_label") or ("density" if payload.density else "count")),
+    }
 
 
 def _metadata(payload: HistogramPayload) -> dict[str, Any]:
     fit = payload.fit
     fit_metadata: dict[str, Any] | None = None
     if fit is not None:
+        tail_risk = fit.tail_risk
         fit_metadata = {
             "selected": fit.selected,
             "quality": fit.quality,
@@ -265,7 +356,25 @@ def _metadata(payload: HistogramPayload) -> dict[str, Any]:
             "bic": fit.bic,
             "gof_statistic": fit.gof_statistic,
             "gof_p_value": fit.gof_p_value,
+            "tail_risk": None
+            if tail_risk is None
+            else {
+                "below_lsl_probability": tail_risk.below_lsl_probability,
+                "above_usl_probability": tail_risk.above_usl_probability,
+                "total_probability": tail_risk.total_probability,
+                "ppm": tail_risk.ppm,
+            },
             "candidates_ranked": fit.candidates_ranked,
+        }
+
+    normality_metadata: dict[str, Any] | None = None
+    if payload.normality is not None:
+        normality_metadata = {
+            "method": payload.normality.method,
+            "statistic": payload.normality.statistic,
+            "p_value": payload.normality.p_value,
+            "is_normal": payload.normality.is_normal,
+            "warnings": payload.normality.warnings,
         }
 
     return {
@@ -293,12 +402,14 @@ def _metadata(payload: HistogramPayload) -> dict[str, Any]:
             "cpu": payload.capability.cpu,
             "sample_std": payload.capability.sample_std,
         },
+        "normality": normality_metadata,
         "spec_limits": {
             "lsl": payload.spec_limits.lsl,
             "nominal": payload.spec_limits.nominal,
             "usl": payload.spec_limits.usl,
         },
         "fit": fit_metadata,
+        "payload_metadata": dict(payload.metadata),
     }
 
 

@@ -4,7 +4,8 @@ import numpy as np
 
 from ...models.payloads import ViolinPayload
 from ...models.render import RenderResult
-from .._common import style_spec_limits
+from ...specs import violin_payload_to_resolved_spec
+from .._common import apply_resolved_layout, style_spec_limits_y
 
 
 def render_violin_matplotlib(payload: ViolinPayload) -> RenderResult:
@@ -14,11 +15,14 @@ def render_violin_matplotlib(payload: ViolinPayload) -> RenderResult:
     data = [np.asarray(group.values, dtype=float) for group in payload.groups]
     positions = np.arange(1, len(data) + 1)
 
+    resolved = violin_payload_to_resolved_spec(payload)
+
     if data:
-        parts = ax.violinplot(data, positions=positions, showmeans=False, showextrema=False, showmedians=False)
-        for body in parts["bodies"]:
-            body.set_facecolor("tab:blue")
-            body.set_alpha(0.75)
+        for group_spec in resolved.groups:
+            if not group_spec.body_points:
+                continue
+            x_values, y_values = zip(*group_spec.body_points, strict=False)
+            ax.fill(x_values, y_values, facecolor="tab:blue", edgecolor="tab:blue", alpha=0.75)
 
         show_mean = bool(payload.metadata.get("show_mean", True))
         show_quartiles = bool(payload.metadata.get("show_quartiles", True))
@@ -37,8 +41,9 @@ def render_violin_matplotlib(payload: ViolinPayload) -> RenderResult:
             if show_extrema and group.summary.minimum is not None and group.summary.maximum is not None:
                 ax.vlines(position, group.summary.minimum, group.summary.maximum, color="tab:gray", linewidth=1, alpha=0.8)
 
-    style_spec_limits(ax, payload.spec_limits)
+    style_spec_limits_y(ax, payload.spec_limits)
     ax.set_xticks(positions, [group.label for group in payload.groups])
     ax.set_xlabel("group")
     ax.set_ylabel("value")
+    apply_resolved_layout(fig, ax, resolved)
     return RenderResult(fig=fig, ax=ax, metadata={"kind": "violin", "metadata": payload.metadata})

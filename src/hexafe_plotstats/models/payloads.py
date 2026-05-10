@@ -5,7 +5,7 @@ from typing import Any
 
 from .common import SpecLimits
 from .fits import CurvePayload, DistributionFitResult
-from .summaries import CapabilitySummary, DistributionSummary
+from .summaries import CapabilitySummary, DistributionSummary, NormalitySummary
 
 
 @dataclass(frozen=True)
@@ -13,6 +13,7 @@ class TableRow:
     label: str
     value: str
     kind: str = "metric"
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -25,8 +26,10 @@ class HistogramPayload:
     capability: CapabilitySummary
     spec_limits: SpecLimits
     fit: DistributionFitResult | None = None
+    normality: NormalitySummary | None = None
     table_rows: tuple[TableRow, ...] = ()
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -72,4 +75,3 @@ class ScatterPayload:
     include_trend: bool
     simplified_annotations: bool
     metadata: dict[str, Any] = field(default_factory=dict)
-

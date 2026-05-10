@@ -1,4 +1,6 @@
 from .api import (
+    renderer_backend_available,
+    renderer_backend_capabilities,
     render_histogram,
     render_histogram_png,
     render_iqr,
@@ -9,7 +11,7 @@ from .api import (
     render_violin,
     render_violin_png,
 )
-from .base import RendererBackendUnavailable
+from .base import RendererBackendCapability, RendererBackendUnavailable
 from .matplotlib import (
     render_histogram_matplotlib,
     render_iqr_matplotlib,
@@ -18,7 +20,10 @@ from .matplotlib import (
 )
 
 __all__ = [
+    "RendererBackendCapability",
     "RendererBackendUnavailable",
+    "renderer_backend_available",
+    "renderer_backend_capabilities",
     "render_histogram",
     "render_histogram_matplotlib",
     "render_histogram_png",

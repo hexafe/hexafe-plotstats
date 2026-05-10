@@ -21,6 +21,9 @@ def compute_capability(values: object, spec_limits: SpecLimits | None = None) ->
             warnings=warnings + ("capability requires at least two finite numeric values",),
         )
 
+    mean = float(np.mean(cleaned))
+    sample_std = float(np.std(cleaned, ddof=1))
+
     if spec_limits is None or (not spec_limits.has_lower and not spec_limits.has_upper):
         warnings = warnings + ("no specification limits supplied",)
         return CapabilitySummary(
@@ -32,8 +35,6 @@ def compute_capability(values: object, spec_limits: SpecLimits | None = None) ->
             warnings=warnings,
         )
 
-    mean = float(np.mean(cleaned))
-    sample_std = float(np.std(cleaned, ddof=1))
     if sample_std <= 0.0 or not np.isfinite(sample_std):
         return CapabilitySummary(
             cp=None,

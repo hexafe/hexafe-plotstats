@@ -57,9 +57,28 @@ render_histogram(payload, backend="rust")
 Current state:
 
 - `backend="matplotlib"` is the default and returns `RenderResult(fig, ax, metadata)`.
-- `backend="rust"` is an explicit opt-in and currently raises `RendererBackendUnavailable`.
+- `backend="rust"` is an explicit opt-in and returns PNG bytes when the optional native module is installed.
 
 This keeps the user-facing API stable while Rust parity work proceeds behind the backend boundary.
+
+You can inspect renderer availability without attempting a render:
+
+```python
+from hexafe_plotstats import renderer_backend_capabilities
+
+for backend in renderer_backend_capabilities():
+    print(backend.backend, backend.available, backend.default)
+```
+
+## Supported charts
+
+| Chart family | Payload builder | Default renderer | Rust/native status | Notes |
+| --- | --- | --- | --- | --- |
+| Histogram | `build_histogram_payload(...)` | `render_histogram(..., backend="matplotlib")` | explicit opt-in when `_hexafe_plotstats_native` is installed | Includes Metroliza-style summary rows, capability, normality, fitted distribution, and resolved-spec support. |
+| Violin | `build_violin_payload(...)` | `render_violin(..., backend="matplotlib")` | explicit opt-in when `_hexafe_plotstats_native` is installed | Grouped distribution view with mean/quartile/extrema annotations and resolved-spec support. |
+| IQR | `build_iqr_payload(...)` | `render_iqr(..., backend="matplotlib")` | explicit opt-in when `_hexafe_plotstats_native` is installed | Grouped boxplot view with outlier policy in payload metadata and resolved-spec support. |
+| Scatter | `build_scatter_payload(...)` | `render_scatter(..., backend="matplotlib")` | explicit opt-in when `_hexafe_plotstats_native` is installed | Automatically switches between normal scatter, rasterized scatter, and hexbin based on data volume; resolved-spec support is available. |
+| Scatter trend | `build_scatter_payload(..., ScatterConfig(include_trend=True))` | `render_scatter(..., backend="matplotlib")` | explicit opt-in PNG helper when `_hexafe_plotstats_native` is installed | Trend is currently a scatter mode, not a separate first-class chart family. |
 
 ## Resolved spec boundary
 
@@ -74,7 +93,21 @@ Python is responsible for resolving:
 - annotations
 - chart-specific render metadata
 
-The Rust PNG entry points convert payloads into that resolved mapping before calling a native module. The native module is still absent, so those entry points currently raise `RendererBackendUnavailable`, but the handoff contract is now present.
+The Rust PNG entry points convert payloads into that resolved mapping before calling the optional native module. If `_hexafe_plotstats_native` is not installed, Rust paths raise `RendererBackendUnavailable`.
+
+Current resolved-spec helpers:
+
+```python
+from hexafe_plotstats.specs import (
+    histogram_payload_to_resolved_spec,
+    iqr_payload_to_resolved_spec,
+    scatter_payload_to_resolved_spec,
+    to_mapping,
+    violin_payload_to_resolved_spec,
+)
+
+mapping = to_mapping(histogram_payload_to_resolved_spec(payload))
+```
 
 ## Payload builders
 
@@ -91,6 +124,48 @@ from hexafe_plotstats import (
 
 Payloads are plain typed dataclasses. They are not tied to Excel, xlsxwriter, Qt, or a workbook layout.
 
+Histogram options:
+
+```python
+from hexafe_plotstats import HistogramConfig, build_histogram_payload
+
+payload = build_histogram_payload(
+    values,
+    config=HistogramConfig(bins=24, density=False, include_fit=False),
+    metadata={
+        "title": "Diameter",
+        "axis_labels": {"x": "Measurement", "y": "Count"},
+    },
+)
+```
+
+Empty or all-nonfinite input resolves to a single zero-height fallback bin over `0.0..1.0`. Constant input resolves to one bin centered on the constant value. These fallbacks keep renderers and resolved-spec consumers deterministic.
+
+Grouped chart example:
+
+```python
+from hexafe_plotstats import (
+    SpecLimits,
+    build_iqr_payload,
+    build_scatter_payload,
+    build_violin_payload,
+    render_iqr,
+    render_scatter,
+    render_violin,
+)
+from hexafe_plotstats.models import ScatterConfig
+
+limits = SpecLimits(lsl=0.0, nominal=2.5, usl=5.0)
+
+violin = build_violin_payload({"A": [1, 2, 3], "B": [2, 3, 4]}, limits)
+iqr = build_iqr_payload({"A": [1, 2, 3], "B": [2, 3, 7]}, limits)
+scatter = build_scatter_payload([1, 2, 3, 4], [2, 4, 6, 8], ScatterConfig(include_trend=True))
+
+render_violin(violin)
+render_iqr(iqr)
+render_scatter(scatter)
+```
+
 ## Matplotlib renderers
 
 Matplotlib-specific functions remain available when a caller wants to bypass backend dispatch:
@@ -102,24 +177,30 @@ from hexafe_plotstats import render_histogram_matplotlib
 ## Rust/native renderer
 
 Rust/native rendering is an explicit backend target, not the default.
-In this package, the native backend is not yet available and the rust path raises `RendererBackendUnavailable`.
+Matplotlib remains the default. When `_hexafe_plotstats_native` is installed, `backend="rust"` and the PNG helpers render through the native Rust extension; otherwise they raise `RendererBackendUnavailable`.
 
 The byte-oriented native helpers are exposed separately from matplotlib figure renderers:
 
 ```python
 from hexafe_plotstats import render_histogram_png
 
-render_histogram_png(payload)  # currently raises RendererBackendUnavailable
+result = render_histogram_png(payload)
+result.png_bytes
 ```
 
-The porting plan is:
+The native package is built from `native/hexafe-plotstats-native` with maturin:
 
-1. keep chart payloads backend-neutral
-2. use resolved specs as the Python-to-native handoff
-3. port the metroliza Rust/native rendering boundary behind the rust PNG helpers
-4. tune chart output toward matplotlib parity
-3. tune Rust output against matplotlib output chart by chart
-4. keep workbook and thread orchestration outside this package
+```bash
+cd native/hexafe-plotstats-native
+python -m maturin build
+```
+
+Renderer parity and timing helpers are available under `scripts/`:
+
+```bash
+python scripts/compare_renderers.py
+python scripts/benchmark_renderers.py
+```
 
 ## Optional adapters
 
@@ -128,6 +209,16 @@ The porting plan is:
 - `hexafe_plotstats.adapters.groupstats`: duck-typed helpers for groupstats-style objects
 
 Adapters extract values and limits, then call the same core payload/stat/render functions.
+
+The Metroliza adapter also accepts the enriched native histogram payload shape used by Metroliza export code:
+
+```python
+from hexafe_plotstats.adapters import histogram_from_metroliza_native_payload
+
+payload = histogram_from_metroliza_native_payload(native_payload)
+```
+
+It preserves title, count-space histogram settings, x-view, axis labels, mean-line metadata, specification lines, annotation rows, summary table rows, and visual metadata for resolved-spec/native handoff tests.
 
 ## Resume notes
 

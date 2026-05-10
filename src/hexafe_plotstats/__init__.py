@@ -25,7 +25,10 @@ from .renderers.matplotlib.iqr import render_iqr_matplotlib
 from .renderers.matplotlib.scatter import render_scatter_matplotlib
 from .renderers.matplotlib.violin import render_violin_matplotlib
 from .renderers import (
+    RendererBackendCapability,
     RendererBackendUnavailable,
+    renderer_backend_available,
+    renderer_backend_capabilities,
     render_histogram,
     render_histogram_png,
     render_iqr,
@@ -52,7 +55,10 @@ __all__ = [
     "IQRPayload",
     "NormalitySummary",
     "RenderResult",
+    "RendererBackendCapability",
     "RendererBackendUnavailable",
+    "renderer_backend_available",
+    "renderer_backend_capabilities",
     "ScatterConfig",
     "ScatterPayload",
     "SpecLimits",

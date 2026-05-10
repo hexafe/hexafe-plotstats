@@ -1,38 +1,56 @@
 from __future__ import annotations
 
 from .histogram import histogram_payload_to_resolved_spec
+from .iqr import iqr_payload_to_resolved_spec
 from .mapping import asdict, to_mapping
 from .primitives import (
     AxisSpec,
     BarSpec,
+    BoxPlotSpec,
     Canvas,
     CurveSpec,
     LineSpec,
+    MarkerSpec,
     Rect,
     ResolvedChartSpec,
     ResolvedHistogramSpec,
+    ResolvedIQRSpec,
+    ResolvedScatterSpec,
+    ResolvedViolinSpec,
     Size,
     TableCell,
     TableRow,
     TableSpec,
     TextSpec,
+    ViolinGroupSpec,
 )
+from .scatter import scatter_payload_to_resolved_spec
+from .violin import violin_payload_to_resolved_spec
 
 __all__ = [
     "AxisSpec",
     "BarSpec",
+    "BoxPlotSpec",
     "Canvas",
     "CurveSpec",
     "LineSpec",
+    "MarkerSpec",
     "Rect",
     "ResolvedChartSpec",
     "ResolvedHistogramSpec",
+    "ResolvedIQRSpec",
+    "ResolvedScatterSpec",
+    "ResolvedViolinSpec",
     "Size",
     "TableCell",
     "TableRow",
     "TableSpec",
     "TextSpec",
+    "ViolinGroupSpec",
     "asdict",
     "histogram_payload_to_resolved_spec",
+    "iqr_payload_to_resolved_spec",
+    "scatter_payload_to_resolved_spec",
     "to_mapping",
+    "violin_payload_to_resolved_spec",
 ]

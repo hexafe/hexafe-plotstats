@@ -1,11 +1,44 @@
 from __future__ import annotations
 
-from .base import NativeRendererBackend, RendererBackend
+from .base import NativeRendererBackend, RendererBackend, RendererBackendCapability
 from ..models.payloads import HistogramPayload, IQRPayload, ScatterPayload, ViolinPayload
 from ..models.render import ChartRenderResult, RenderResult
 
 
-def render_histogram(payload: HistogramPayload, *, backend: RendererBackend = "matplotlib") -> RenderResult:
+def renderer_backend_available(backend: RendererBackend) -> bool:
+    if backend == "matplotlib":
+        return True
+    if backend == "rust":
+        from .rust import native_backend_available
+
+        return native_backend_available()
+    raise ValueError(f"unsupported renderer backend: {backend}")
+
+
+def renderer_backend_capabilities() -> tuple[RendererBackendCapability, ...]:
+    rust_available = renderer_backend_available("rust")
+    rust_message = (
+        "rust native module is installed"
+        if rust_available
+        else "rust renderer is explicit opt-in and no native module is installed"
+    )
+    return (
+        RendererBackendCapability(
+            backend="matplotlib",
+            available=True,
+            default=True,
+            message="default renderer backend",
+        ),
+        RendererBackendCapability(
+            backend="rust",
+            available=rust_available,
+            default=False,
+            message=rust_message,
+        ),
+    )
+
+
+def render_histogram(payload: HistogramPayload, *, backend: RendererBackend = "matplotlib") -> RenderResult | ChartRenderResult:
     if backend == "matplotlib":
         from .matplotlib import render_histogram_matplotlib
 
@@ -17,7 +50,7 @@ def render_histogram(payload: HistogramPayload, *, backend: RendererBackend = "m
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 
-def render_violin(payload: ViolinPayload, *, backend: RendererBackend = "matplotlib") -> RenderResult:
+def render_violin(payload: ViolinPayload, *, backend: RendererBackend = "matplotlib") -> RenderResult | ChartRenderResult:
     if backend == "matplotlib":
         from .matplotlib import render_violin_matplotlib
 
@@ -29,7 +62,7 @@ def render_violin(payload: ViolinPayload, *, backend: RendererBackend = "matplot
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 
-def render_iqr(payload: IQRPayload, *, backend: RendererBackend = "matplotlib") -> RenderResult:
+def render_iqr(payload: IQRPayload, *, backend: RendererBackend = "matplotlib") -> RenderResult | ChartRenderResult:
     if backend == "matplotlib":
         from .matplotlib import render_iqr_matplotlib
 
@@ -41,7 +74,7 @@ def render_iqr(payload: IQRPayload, *, backend: RendererBackend = "matplotlib") 
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 
-def render_scatter(payload: ScatterPayload, *, backend: RendererBackend = "matplotlib") -> RenderResult:
+def render_scatter(payload: ScatterPayload, *, backend: RendererBackend = "matplotlib") -> RenderResult | ChartRenderResult:
     if backend == "matplotlib":
         from .matplotlib import render_scatter_matplotlib
 
