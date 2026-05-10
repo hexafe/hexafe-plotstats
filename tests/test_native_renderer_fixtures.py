@@ -30,7 +30,17 @@ UPDATE_FIXTURES_ENV = "HEXAFE_PLOTSTATS_UPDATE_NATIVE_FIXTURES"
 
 
 def _canonical_json(value: dict[str, Any]) -> str:
-    return json.dumps(value, indent=2, sort_keys=True) + "\n"
+    return json.dumps(_canonical_fixture_value(value), indent=2, sort_keys=True) + "\n"
+
+
+def _canonical_fixture_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _canonical_fixture_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_canonical_fixture_value(item) for item in value]
+    if isinstance(value, float):
+        return round(value, 8)
+    return value
 
 
 def _build_resolved_spec_fixtures() -> dict[str, Any]:
