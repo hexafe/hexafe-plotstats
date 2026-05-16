@@ -90,6 +90,14 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
   -> `57 passed, 10 skipped`; full `compileall` and `git diff --check` passed.
 - Keep Matplotlib as the default backend and Rust/native as explicit opt-in
   while release packaging remains pre-release.
+- Release prep branch version: core package `0.1.0a1`, native Python package
+  `0.1.0a1`, native Rust crate `0.1.0-alpha.1`.
+- Release prep validation: `python -m pytest -q` -> `60 passed,
+  10 skipped`; `python -m compileall -q src tests scripts examples` passed;
+  `cargo fmt --check`, `cargo check --locked`, and `cargo test --locked`
+  passed; `python -m build --outdir /tmp/hexafe-plotstats-release-dist`
+  built `hexafe_plotstats-0.1.0a1`; native `maturin build --release --locked`
+  built a local Linux wheel with the expected non-PyPI `linux_x86_64` warning.
 
 ## Current decisions
 
