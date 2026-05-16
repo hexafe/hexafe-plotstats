@@ -16,6 +16,24 @@ def require_plotly_graph_objects() -> Any:
     return go
 
 
+def plotly_config(*, static: bool = False) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "responsive": True,
+        "scrollZoom": False,
+        "displaylogo": False,
+        "modeBarButtonsToRemove": [
+            "lasso2d",
+            "select2d",
+            "autoScale2d",
+            "toggleSpikelines",
+        ],
+    }
+    if static:
+        config["staticPlot"] = True
+        config["displayModeBar"] = False
+    return config
+
+
 def axis_layout(axis: dict[str, Any]) -> dict[str, Any]:
     layout: dict[str, Any] = {
         "title": {"text": str(axis.get("label") or "")},

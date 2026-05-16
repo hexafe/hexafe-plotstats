@@ -63,7 +63,9 @@ Current state:
 - `backend="rust"` is an explicit opt-in and returns PNG bytes when the optional native module is installed.
 - `backend="plotly"` is optional. It resolves histogram, IQR, violin, and
   scatter payloads into Plotly-compatible trace/layout dictionaries and creates
-  `go.Figure` objects when the `plotly` extra is installed.
+  `go.Figure` objects when the `plotly` extra is installed. Histogram and
+  violin specs are static by default for dashboard use; scatter remains
+  interactive by default.
 
 This keeps the user-facing API stable while Rust parity work proceeds behind the backend boundary.
 
@@ -99,6 +101,23 @@ interactive point count. The interactive layer contains aggregated buckets only.
 Raw points are rendered as a separate bounded static-raster heatmap layer with
 its own legend group, so users can hide raw data without removing the aggregated
 interactive trace and without serializing every raw point into Plotly.
+
+## Static Dashboard Defaults
+
+Histogram and violin dashboard views should favor workbook-matching static
+snapshots by default. Their Plotly spec helpers therefore include a static
+config unless interactivity is explicitly requested:
+
+```python
+from hexafe_plotstats import histogram_payload_to_plotly_spec
+
+static_spec = histogram_payload_to_plotly_spec(payload)  # config.staticPlot=True
+interactive_spec = histogram_payload_to_plotly_spec(payload, static=False)
+```
+
+This mirrors the Metroliza dashboard contract: distribution-heavy charts remain
+static unless a caller intentionally opts into browser interaction, while large
+scatter/time-series views can use bounded interactive aggregates.
 
 ## Supported charts
 

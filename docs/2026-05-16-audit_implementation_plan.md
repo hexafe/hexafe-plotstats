@@ -386,3 +386,32 @@ Implemented in the second continuation slice:
 - Large Plotly hexbin spec smoke with 1M points completed in about `0.30s`,
   traced peak memory about `55.5 MB`, raw raster payload cells `24,576`,
   aggregate points `398`, and trace JSON about `0.18 MB`.
+
+Metroliza dashboard audit after the second slice:
+
+- `/home/hexaf/Projects/metroliza/modules/export_html_dashboard.py` still owns
+  its own Plotly spec builders for histogram, distribution, IQR, and trend. Use
+  its theme tokens, reference-line annotations, `x_view` handling, and
+  responsive histogram detail-card layout as the behavior reference when moving
+  those builders into `hexafe-plotstats`.
+- `/home/hexaf/Projects/metroliza/modules/industrial_analytics_dashboard.py`
+  already uses the Metroliza `hexafe_plotstats_adapter` for single-metric
+  histogram PNGs and histogram stats tables, but multi-group histograms,
+  violin, and box static images are still rendered by local Matplotlib helpers.
+- The production/CSV dashboard keeps histogram and violin as static image cards
+  by design. Plotly is mainly used for time-series/scatter-like inspection, with
+  static raw image layers plus separate legend traces for large raw point sets.
+
+Implemented in the third continuation slice:
+
+- Histogram and violin Plotly spec helpers now default to static dashboard
+  configs (`config.staticPlot=True`, `displayModeBar=False`) and metadata
+  `default_render_mode="static"`.
+- Callers can still opt into interactive histogram/violin Plotly specs with
+  `static=False`.
+- Scatter Plotly specs remain interactive by default and now include an
+  explicit Plotly config object without `staticPlot`.
+- Validation:
+  `PYTHONPATH=src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats python -m pytest -q`
+  -> `57 passed, 10 skipped`; full `compileall` and `git diff --check`
+  passed.

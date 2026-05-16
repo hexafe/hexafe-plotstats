@@ -79,6 +79,7 @@ def test_large_plotly_scatter_spec_uses_aggregate_trace_and_static_raw_legend() 
     assert spec["metadata"]["data_policy"] == "aggregated_hexbin"
     assert spec["metadata"]["interactive_contains_raw_points"] is False
     assert spec["metadata"]["source_point_count"] == count
+    assert "staticPlot" not in spec["config"]
     raw, aggregate = spec["data"]
     assert aggregate["name"] == "Aggregated density"
     assert len(aggregate["x"]) < 2_000

@@ -30,6 +30,17 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
   for histogram, IQR, and violin. Histogram preserves bars/curves/spec
   lines/tables from the resolved spec; IQR uses resolved quartile/whisker
   summaries; violin uses resolved body polygons and annotation markers.
+- Metroliza dashboard audit for the next migration step: `modules/export_html_dashboard.py`
+  still owns local Plotly spec builders and should be the reference for
+  theme/layout/reference-line annotations and histogram detail cards;
+  `modules/industrial_analytics_dashboard.py` already uses the Metroliza
+  plotstats adapter for single histogram PNGs/stats, but multi-group histogram,
+  violin, and box static images are still local Matplotlib. Production/CSV
+  histogram and violin charts are static image cards by default.
+- Third continuation slice: histogram and violin Plotly spec
+  helpers now default to static dashboard configs and metadata, with
+  `static=False` available as an explicit opt-in. Scatter remains interactive
+  by default.
 - Validation for this slice: pure-Python pytest `51 passed, 10 skipped`;
   native-enabled pytest `61 passed`; native `resvg` smoke `13 passed`;
   renderer comparison passed under threshold 15 for histogram, scatter,
@@ -45,6 +56,11 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
 - 1M Plotly hexbin spec smoke for the continuation slice: about `0.30s`,
   `55.5 MB` traced peak, raw raster payload cells `24,576`, aggregate points
   `398`, and trace JSON about `0.18 MB`.
+- Validation for the static histogram/violin policy slice:
+  `PYTHONPATH=src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats python -m pytest tests/test_interactive_scatter.py tests/test_renderer_backends.py -q`
+  -> `37 passed`; full pure-Python suite
+  `PYTHONPATH=src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats python -m pytest -q`
+  -> `57 passed, 10 skipped`; full `compileall` and `git diff --check` passed.
 - Keep Matplotlib as the default backend and Rust/native as explicit opt-in
   while release packaging remains pre-release.
 

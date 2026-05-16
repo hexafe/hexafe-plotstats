@@ -6,16 +6,19 @@ from typing import Any
 from ...models.payloads import ViolinPayload
 from ...models.render import RenderResult
 from ...specs import to_mapping, violin_payload_to_resolved_spec
-from ._common import line_trace, require_plotly_graph_objects, resolved_layout, rgba
+from ._common import line_trace, plotly_config, require_plotly_graph_objects, resolved_layout, rgba
 
 
-def violin_payload_to_plotly_spec(payload: ViolinPayload) -> dict[str, Any]:
+def violin_payload_to_plotly_spec(payload: ViolinPayload, *, static: bool = True) -> dict[str, Any]:
     resolved = to_mapping(violin_payload_to_resolved_spec(payload))
     metadata = {
         "kind": "violin",
         "backend": "plotly",
         "group_count": len(resolved["groups"]),
         "data_policy": "resolved_violin_body",
+        "default_render_mode": "static" if static else "interactive",
+        "recommended_dashboard_mode": "static_snapshot" if static else "interactive_plotly",
+        "interactive_enabled": not static,
     }
     traces: list[dict[str, Any]] = []
     traces.extend(_body_trace(group) for group in resolved["groups"] if group.get("body_points"))
@@ -24,14 +27,14 @@ def violin_payload_to_plotly_spec(payload: ViolinPayload) -> dict[str, Any]:
 
     layout = resolved_layout(resolved, metadata)
     layout["showlegend"] = True
-    return {"data": traces, "layout": layout, "metadata": metadata, "resolved": resolved}
+    return {"data": traces, "layout": layout, "config": plotly_config(static=static), "metadata": metadata, "resolved": resolved}
 
 
-def render_violin_plotly(payload: ViolinPayload) -> RenderResult:
+def render_violin_plotly(payload: ViolinPayload, *, static: bool = True) -> RenderResult:
     go = require_plotly_graph_objects()
-    spec = violin_payload_to_plotly_spec(payload)
+    spec = violin_payload_to_plotly_spec(payload, static=static)
     fig = go.Figure(data=spec["data"], layout=spec["layout"])
-    return RenderResult(fig=fig, ax=None, metadata=spec["metadata"])
+    return RenderResult(fig=fig, ax=None, metadata={**spec["metadata"], "plotly_config": spec["config"]})
 
 
 def _body_trace(group: dict[str, Any]) -> dict[str, Any]:

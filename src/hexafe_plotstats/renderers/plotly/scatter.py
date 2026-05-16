@@ -10,6 +10,7 @@ from ...models.payloads import ScatterPayload
 from ...models.render import RenderResult
 from ...specs import scatter_payload_to_resolved_spec, to_mapping
 from ..base import RendererBackendUnavailable
+from ._common import plotly_config
 
 _LARGE_PLOTLY_SCATTER_THRESHOLD = 50_000
 _STATIC_RASTER_BINS = 192
@@ -87,6 +88,7 @@ def _large_scatter_plotly_spec(payload: ScatterPayload, *, target_interactive_po
             "legend": {"groupclick": "toggleitem"},
             "meta": metadata,
         },
+        "config": plotly_config(static=False),
         "metadata": metadata,
     }
 
@@ -113,6 +115,7 @@ def _raw_scatter_plotly_spec(payload: ScatterPayload) -> dict[str, Any]:
             }
         ],
         "layout": {"hovermode": "closest", "meta": metadata},
+        "config": plotly_config(static=False),
         "metadata": metadata,
     }
 

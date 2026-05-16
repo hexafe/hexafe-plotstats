@@ -336,6 +336,9 @@ def test_histogram_plotly_spec_preserves_bars_limits_and_table() -> None:
     spec = histogram_payload_to_plotly_spec(payload)
 
     assert spec["metadata"]["kind"] == "histogram"
+    assert spec["metadata"]["default_render_mode"] == "static"
+    assert spec["metadata"]["interactive_enabled"] is False
+    assert spec["config"]["staticPlot"] is True
     assert spec["layout"]["xaxis"]["title"]["text"] == "Measurement"
     assert spec["layout"]["yaxis"]["title"]["text"] == "Count"
     traces_by_type = {trace["type"]: trace for trace in spec["data"]}
@@ -372,11 +375,27 @@ def test_violin_plotly_spec_uses_resolved_body_polygons() -> None:
     spec = violin_payload_to_plotly_spec(payload)
 
     body_traces = [trace for trace in spec["data"] if trace.get("fill") == "toself"]
+    assert spec["metadata"]["default_render_mode"] == "static"
+    assert spec["metadata"]["interactive_enabled"] is False
+    assert spec["config"]["staticPlot"] is True
     assert len(body_traces) == 2
     assert all(trace["meta"]["data_policy"] == "resolved_violin_body" for trace in body_traces)
     assert all(trace["meta"]["contains_raw_points"] is False for trace in body_traces)
     assert all(len(trace["x"]) < 250 for trace in body_traces)
     assert any(trace["meta"].get("kind") == "mean" for trace in spec["data"])
+
+
+def test_histogram_and_violin_plotly_specs_can_opt_into_interactivity() -> None:
+    histogram = build_histogram_payload([1, 2, 3])
+    violin = build_violin_payload({"A": [1, 2, 3]})
+
+    histogram_spec = histogram_payload_to_plotly_spec(histogram, static=False)
+    violin_spec = violin_payload_to_plotly_spec(violin, static=False)
+
+    assert histogram_spec["metadata"]["default_render_mode"] == "interactive"
+    assert violin_spec["metadata"]["default_render_mode"] == "interactive"
+    assert "staticPlot" not in histogram_spec["config"]
+    assert "staticPlot" not in violin_spec["config"]
 
 
 def test_scatter_payload_resolves_to_pure_chart_spec_mapping_with_trend() -> None:

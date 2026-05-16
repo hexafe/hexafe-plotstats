@@ -5,7 +5,7 @@ from typing import Any
 from ...models.payloads import IQRPayload
 from ...models.render import RenderResult
 from ...specs import iqr_payload_to_resolved_spec, to_mapping
-from ._common import line_trace, require_plotly_graph_objects, resolved_layout
+from ._common import line_trace, plotly_config, require_plotly_graph_objects, resolved_layout
 
 
 def iqr_payload_to_plotly_spec(payload: IQRPayload) -> dict[str, Any]:
@@ -25,7 +25,7 @@ def iqr_payload_to_plotly_spec(payload: IQRPayload) -> dict[str, Any]:
 
     layout = resolved_layout(resolved, metadata)
     layout["boxmode"] = "group"
-    return {"data": traces, "layout": layout, "metadata": metadata, "resolved": resolved}
+    return {"data": traces, "layout": layout, "config": plotly_config(static=False), "metadata": metadata, "resolved": resolved}
 
 
 def render_iqr_plotly(payload: IQRPayload) -> RenderResult:

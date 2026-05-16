@@ -5,10 +5,10 @@ from typing import Any
 from ...models.payloads import HistogramPayload
 from ...models.render import RenderResult
 from ...specs import histogram_payload_to_resolved_spec, to_mapping
-from ._common import dash_name, line_trace, require_plotly_graph_objects, resolved_layout, rgba
+from ._common import dash_name, line_trace, plotly_config, require_plotly_graph_objects, resolved_layout, rgba
 
 
-def histogram_payload_to_plotly_spec(payload: HistogramPayload) -> dict[str, Any]:
+def histogram_payload_to_plotly_spec(payload: HistogramPayload, *, static: bool = True) -> dict[str, Any]:
     resolved = to_mapping(histogram_payload_to_resolved_spec(payload))
     metadata = {
         "kind": "histogram",
@@ -16,6 +16,9 @@ def histogram_payload_to_plotly_spec(payload: HistogramPayload) -> dict[str, Any
         "bar_count": len(resolved["bars"]),
         "curve_count": len(resolved["curves"]),
         "warning_count": len(resolved.get("warnings") or ()),
+        "default_render_mode": "static" if static else "interactive",
+        "recommended_dashboard_mode": "static_snapshot" if static else "interactive_plotly",
+        "interactive_enabled": not static,
     }
     traces: list[dict[str, Any]] = []
     if resolved["bars"]:
@@ -31,14 +34,14 @@ def histogram_payload_to_plotly_spec(payload: HistogramPayload) -> dict[str, Any
     if resolved.get("table") is not None:
         layout["xaxis"] = {**layout["xaxis"], "domain": [0.0, 0.72]}
     layout["barmode"] = "overlay"
-    return {"data": traces, "layout": layout, "metadata": metadata, "resolved": resolved}
+    return {"data": traces, "layout": layout, "config": plotly_config(static=static), "metadata": metadata, "resolved": resolved}
 
 
-def render_histogram_plotly(payload: HistogramPayload) -> RenderResult:
+def render_histogram_plotly(payload: HistogramPayload, *, static: bool = True) -> RenderResult:
     go = require_plotly_graph_objects()
-    spec = histogram_payload_to_plotly_spec(payload)
+    spec = histogram_payload_to_plotly_spec(payload, static=static)
     fig = go.Figure(data=spec["data"], layout=spec["layout"])
-    return RenderResult(fig=fig, ax=None, metadata=spec["metadata"])
+    return RenderResult(fig=fig, ax=None, metadata={**spec["metadata"], "plotly_config": spec["config"]})
 
 
 def _bar_trace(bars: list[dict[str, Any]], *, density: bool) -> dict[str, Any]:
