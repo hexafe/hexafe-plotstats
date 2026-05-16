@@ -18,9 +18,9 @@ dependencies = [
 
 [project.optional-dependencies]
 pandas = ["pandas>=1.5"]
+plotly = ["plotly>=5.20"]
 test = ["pandas>=1.5", "pytest>=7"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-

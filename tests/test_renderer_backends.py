@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import math
+import json
 
 import matplotlib
+import numpy as np
 import pytest
 
 matplotlib.use("Agg", force=True)
@@ -48,10 +50,12 @@ def test_backend_capabilities_keep_matplotlib_default_and_rust_optional() -> Non
 
     assert renderer_backend_available("matplotlib") is True
     assert renderer_backend_available("rust") is rust_available
+    assert isinstance(renderer_backend_available("plotly"), bool)
     assert capabilities["matplotlib"].available is True
     assert capabilities["matplotlib"].default is True
     assert capabilities["rust"].available is rust_available
     assert capabilities["rust"].default is False
+    assert capabilities["plotly"].default is False
     if rust_available:
         assert "installed" in capabilities["rust"].message
     else:
@@ -351,6 +355,32 @@ def test_hexbin_scatter_resolves_explicit_cells() -> None:
     assert mapping["hex_cells"]
     assert all(len(cell["points"]) == 6 for cell in mapping["hex_cells"])
     assert mapping["metadata"]["mode"] == "hexbin"
+    assert mapping["metadata"]["data_policy"] == "aggregated_hexbin"
+    assert [layer["role"] for layer in mapping["metadata"]["interactive_layers"]] == [
+        "interactive_aggregate",
+        "static_raw_overlay",
+    ]
+    assert mapping["metadata"]["interactive_layers"][1]["legend"]["group"] == "scatter_raw"
+
+
+def test_large_hexbin_scatter_resolved_mapping_is_bounded_by_cell_count() -> None:
+    count = 100_000
+    payload = build_scatter_payload(
+        np.linspace(0.0, 100.0, count),
+        np.sin(np.linspace(0.0, 30.0, count)),
+        ScatterConfig(mode="hexbin", gridsize=50),
+    )
+
+    mapping = to_mapping(scatter_payload_to_resolved_spec(payload))
+
+    assert mapping["markers"] == []
+    assert mapping["marker_batches"] == []
+    assert len(mapping["hex_cells"]) <= 50 * int(round(50 / math.sqrt(3.0)))
+    assert mapping["metadata"]["point_count"] == count
+    assert mapping["metadata"]["data_policy"] == "aggregated_hexbin"
+    assert mapping["metadata"]["interactive_layers"][0]["contains_raw_points"] is False
+    assert mapping["metadata"]["interactive_layers"][1]["contains_raw_points"] is False
+    assert len(json.dumps(mapping["hex_cells"])) < 500_000
 
 
 @pytest.mark.parametrize(
@@ -406,7 +436,26 @@ def test_unsupported_backend_names_raise_clear_errors() -> None:
     payload = build_histogram_payload([1, 2, 3])
 
     with pytest.raises(ValueError, match="unsupported renderer backend"):
-        render_histogram(payload, backend="plotly")
+        render_histogram(payload, backend="plotnine")
 
     with pytest.raises(ValueError, match="unsupported renderer backend"):
         render_histogram_png(payload, backend="matplotlib")
+
+
+def test_plotly_backend_reports_optional_dependency_when_missing() -> None:
+    payload = build_scatter_payload([1, 2, 3], [3, 2, 1])
+
+    if renderer_backend_available("plotly"):
+        result = render_scatter(payload, backend="plotly")
+        assert result.metadata["backend"] == "plotly"
+        return
+
+    with pytest.raises(RendererBackendUnavailable, match="plotly renderer is not installed"):
+        render_scatter(payload, backend="plotly")
+
+
+def test_plotly_backend_reports_chart_families_not_yet_wired() -> None:
+    payload = build_histogram_payload([1, 2, 3])
+
+    with pytest.raises(RendererBackendUnavailable, match="plotly renderer for histogram is not implemented yet"):
+        render_histogram(payload, backend="plotly")

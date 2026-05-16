@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from .base import NativeRendererBackend, NativeRenderProfile, RendererBackend, RendererBackendCapability
+from importlib.util import find_spec
+
+from .base import (
+    NativeRendererBackend,
+    NativeRenderProfile,
+    RendererBackend,
+    RendererBackendCapability,
+    RendererBackendUnavailable,
+)
 from ..models.payloads import HistogramPayload, IQRPayload, ScatterPayload, ViolinPayload
 from ..models.render import ChartRenderResult, RenderResult
 
@@ -12,6 +20,8 @@ def renderer_backend_available(backend: RendererBackend) -> bool:
         from .rust import native_backend_available
 
         return native_backend_available()
+    if backend == "plotly":
+        return find_spec("plotly") is not None
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 
@@ -22,6 +32,8 @@ def renderer_backend_capabilities() -> tuple[RendererBackendCapability, ...]:
         if rust_available
         else "rust renderer is explicit opt-in and no native module is installed"
     )
+    plotly_available = renderer_backend_available("plotly")
+    plotly_message = "plotly is installed" if plotly_available else "plotly renderer requires the optional plotly extra"
     return (
         RendererBackendCapability(
             backend="matplotlib",
@@ -34,6 +46,12 @@ def renderer_backend_capabilities() -> tuple[RendererBackendCapability, ...]:
             available=rust_available,
             default=False,
             message=rust_message,
+        ),
+        RendererBackendCapability(
+            backend="plotly",
+            available=plotly_available,
+            default=False,
+            message=plotly_message,
         ),
     )
 
@@ -52,6 +70,8 @@ def render_histogram(
         from .rust import render_histogram_rust
 
         return render_histogram_rust(payload, profile=profile)
+    if backend == "plotly":
+        raise RendererBackendUnavailable("plotly renderer for histogram is not implemented yet")
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 
@@ -69,6 +89,8 @@ def render_violin(
         from .rust import render_violin_rust
 
         return render_violin_rust(payload, profile=profile)
+    if backend == "plotly":
+        raise RendererBackendUnavailable("plotly renderer for violin is not implemented yet")
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 
@@ -86,6 +108,8 @@ def render_iqr(
         from .rust import render_iqr_rust
 
         return render_iqr_rust(payload, profile=profile)
+    if backend == "plotly":
+        raise RendererBackendUnavailable("plotly renderer for iqr is not implemented yet")
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 
@@ -103,6 +127,10 @@ def render_scatter(
         from .rust import render_scatter_rust
 
         return render_scatter_rust(payload, profile=profile)
+    if backend == "plotly":
+        from .plotly import render_scatter_plotly
+
+        return render_scatter_plotly(payload)
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 

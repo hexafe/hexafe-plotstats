@@ -6,6 +6,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 
 def to_mapping(value: Any) -> Any:
     """Return only Python primitives, lists, and dictionaries."""
@@ -21,6 +23,12 @@ def to_mapping(value: Any) -> Any:
 
     if isinstance(value, (list, tuple)):
         return [to_mapping(item) for item in value]
+
+    if isinstance(value, np.ndarray):
+        return to_mapping(value.tolist())
+
+    if isinstance(value, np.generic):
+        return to_mapping(value.item())
 
     if isinstance(value, Enum):
         return to_mapping(value.value)

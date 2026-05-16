@@ -18,6 +18,7 @@ from .matplotlib import (
     render_scatter_matplotlib,
     render_violin_matplotlib,
 )
+from .plotly import render_scatter_plotly, scatter_payload_to_plotly_spec
 
 __all__ = [
     "RendererBackendCapability",
@@ -33,8 +34,10 @@ __all__ = [
     "render_iqr_png",
     "render_scatter",
     "render_scatter_matplotlib",
+    "render_scatter_plotly",
     "render_scatter_png",
     "render_scatter_trend_png",
+    "scatter_payload_to_plotly_spec",
     "render_violin",
     "render_violin_matplotlib",
     "render_violin_png",

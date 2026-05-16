@@ -1,10 +1,36 @@
 # Session state
 
-Last updated: 2026-05-10, functional native Rust renderer checkpoint
+Last updated: 2026-05-16, repository audit and post-audit implementation plan
 
 ## Current goal
 
 Build `hexafe-plotstats` as a standalone library-first package for statistical visualization payloads and renderer backends extracted from `metroliza`.
+
+## Current continuation pointer
+
+- Start with `docs/2026-05-16-audit_implementation_plan.md` for the latest
+  audit reconciliation and implementation order.
+- The next recommended implementation slice is large-data scatter/hexbin
+  resolution: reduce 1M-point Python resolve time and memory before adding new
+  interactive, theme, axis, or i18n surfaces.
+- Large Plotly scatter should aggregate by default. Temporal X axes should pick
+  minute/hour/day/week buckets automatically from the requested X-axis range and
+  target point count. Interactive traces should contain only aggregated data;
+  raw points should be a static legend-controllable layer.
+- First implementation slice on branch `feature-interactive-and-performance`:
+  large scatter payloads keep NumPy arrays, hexbin resolved specs aggregate
+  vectorially, and `build_scatter_interactive_spec(...)` emits aggregated
+  interactive layers plus a static raw-points layer. The first optional Plotly
+  scatter scaffold emits aggregated traces plus a raw static legend trace for
+  large data. Fresh 1M native hexbin smoke measured about `0.73s` total and
+  `70.6 MB` peak on this machine.
+- Validation for this slice: pure-Python pytest `51 passed, 10 skipped`;
+  native-enabled pytest `61 passed`; native `resvg` smoke `13 passed`;
+  renderer comparison passed under threshold 15 for histogram, scatter,
+  scatter trend, IQR, and violin; `compileall`, `cargo fmt --check`, and
+  `cargo test --locked` passed.
+- Keep Matplotlib as the default backend and Rust/native as explicit opt-in
+  while release packaging remains pre-release.
 
 ## Current decisions
 

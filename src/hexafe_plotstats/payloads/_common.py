@@ -19,24 +19,41 @@ __all__ = [
     "fit_distribution",
     "histogram_bins",
     "normalize_group_values",
+    "paired_finite_arrays_with_counts",
     "paired_finite_arrays",
     "summarize_distribution",
 ]
 
 
+def _float_array(values: Iterable[Any]) -> np.ndarray:
+    if isinstance(values, np.ndarray):
+        return np.asarray(values, dtype=float).reshape(-1)
+    try:
+        return np.asarray(values, dtype=float).reshape(-1)
+    except (TypeError, ValueError):
+        return np.asarray(list(values), dtype=float).reshape(-1)
+
+
 def finite_array(values: Iterable[Any]) -> np.ndarray:
-    array = np.asarray(list(values), dtype=float).reshape(-1)
+    array = _float_array(values)
     return array[np.isfinite(array)]
 
 
 def paired_finite_arrays(left: Iterable[Any], right: Iterable[Any]) -> tuple[np.ndarray, np.ndarray]:
-    left_values = np.asarray(list(left), dtype=float).reshape(-1)
-    right_values = np.asarray(list(right), dtype=float).reshape(-1)
+    left_values, right_values, _raw_count, _dropped_count = paired_finite_arrays_with_counts(left, right)
+    return left_values, right_values
+
+
+def paired_finite_arrays_with_counts(left: Iterable[Any], right: Iterable[Any]) -> tuple[np.ndarray, np.ndarray, int, int]:
+    left_values = _float_array(left)
+    right_values = _float_array(right)
     if left_values.size != right_values.size:
         raise ValueError("x and y must have the same length")
 
     mask = np.isfinite(left_values) & np.isfinite(right_values)
-    return left_values[mask], right_values[mask]
+    finite_count = int(np.count_nonzero(mask))
+    raw_count = int(left_values.size)
+    return left_values[mask], right_values[mask], raw_count, raw_count - finite_count
 
 
 def normalize_group_values(

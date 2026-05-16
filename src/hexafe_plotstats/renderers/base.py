@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-RendererBackend = Literal["matplotlib", "rust"]
+RendererBackend = Literal["matplotlib", "rust", "plotly"]
 NativeRendererBackend = Literal["rust"]
 NativeRenderProfile = Literal["fast", "compact", "debug"]
 

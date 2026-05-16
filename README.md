@@ -18,10 +18,12 @@ Qt, thread, Google export, or dashboard orchestration concerns.
 ```bash
 pip install -e .
 pip install -e .[pandas]
+pip install -e .[plotly]
 ```
 
 The core package depends on `numpy`, `scipy`, and `matplotlib`.
 The `pandas` extra enables pandas adapter helpers.
+The `plotly` extra enables the interactive scatter backend.
 
 ## Quick start
 
@@ -52,12 +54,16 @@ The high-level render functions accept a `backend` argument:
 ```python
 render_histogram(payload, backend="matplotlib")
 render_histogram(payload, backend="rust")
+render_scatter(payload, backend="plotly")
 ```
 
 Current state:
 
 - `backend="matplotlib"` is the default and returns `RenderResult(fig, ax, metadata)`.
 - `backend="rust"` is an explicit opt-in and returns PNG bytes when the optional native module is installed.
+- `backend="plotly"` is optional. The first scaffold supports scatter through
+  Plotly-compatible trace/layout dictionaries and `go.Figure` creation when the
+  `plotly` extra is installed.
 
 This keeps the user-facing API stable while Rust parity work proceeds behind the backend boundary.
 
@@ -69,6 +75,30 @@ from hexafe_plotstats import renderer_backend_capabilities
 for backend in renderer_backend_capabilities():
     print(backend.backend, backend.available, backend.default)
 ```
+
+## Large Interactive Scatter
+
+Large interactive scatter output should use an aggregated interaction layer by
+default. `build_scatter_interactive_spec(...)` prepares that renderer-neutral
+contract without requiring Plotly at import time:
+
+```python
+from hexafe_plotstats import build_scatter_interactive_spec
+
+spec = build_scatter_interactive_spec(
+    timestamps,
+    values,
+    x_view=("2026-01-01T00:00", "2026-01-08T00:00"),
+    target_interactive_points=500,
+)
+```
+
+For temporal X axes, the bucket is selected automatically from `minute`,
+`hour`, `day`, or `week` based on the requested X-axis range and the target
+interactive point count. The interactive layer contains aggregated buckets only.
+Raw points are represented as a separate static-raster layer with its own legend
+group, so a Plotly/HTML consumer can let users hide raw data without removing
+the aggregated interactive trace.
 
 ## Supported charts
 

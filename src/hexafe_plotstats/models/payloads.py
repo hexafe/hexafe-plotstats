@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -64,8 +65,8 @@ class IQRPayload:
 
 @dataclass(frozen=True)
 class ScatterPayload:
-    x: tuple[float, ...]
-    y: tuple[float, ...]
+    x: Sequence[float]
+    y: Sequence[float]
     mode: str
     marker_size: float
     alpha: float

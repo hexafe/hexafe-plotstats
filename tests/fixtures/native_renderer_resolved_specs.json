@@ -1345,11 +1345,31 @@
         }
       ],
       "metadata": {
+        "data_policy": "full",
+        "dropped_nonfinite_count": 0,
+        "finite_point_count": 5,
         "hex_cell_count": 0,
         "include_trend": true,
+        "interactive_layers": [
+          {
+            "contains_raw_points": true,
+            "data_policy": "full",
+            "id": "scatter_points",
+            "legend": {
+              "group": "scatter_points",
+              "label": "Points",
+              "show": true,
+              "togglable": true,
+              "visible": true
+            },
+            "point_count": 5,
+            "role": "interactive_points"
+          }
+        ],
         "mode": "scatter",
         "point_count": 5,
         "rasterized": false,
+        "raw_point_count": 5,
         "simplified_annotations": false
       },
       "plot_rect": {
