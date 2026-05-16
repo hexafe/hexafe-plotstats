@@ -61,6 +61,8 @@ from .renderers import (
 from .stats.capability import compute_capability
 from .stats.distribution_fit import fit_distribution
 from .stats.summary_stats import summarize_distribution
+from .themes import available_themes, get_theme, set_theme
+from .i18n import available_locales, get_locale, set_locale, translate
 
 __all__ = [
     "CapabilitySummary",
@@ -93,8 +95,12 @@ __all__ = [
     "build_iqr_payload",
     "build_scatter_payload",
     "build_violin_payload",
+    "available_locales",
+    "available_themes",
     "compute_capability",
     "fit_distribution",
+    "get_locale",
+    "get_theme",
     "histogram_payload_to_plotly_spec",
     "iqr_payload_to_plotly_spec",
     "render_histogram",
@@ -115,7 +121,10 @@ __all__ = [
     "render_violin_plotly",
     "render_violin_png",
     "select_temporal_bucket",
+    "set_locale",
+    "set_theme",
     "scatter_payload_to_plotly_spec",
     "summarize_distribution",
+    "translate",
     "violin_payload_to_plotly_spec",
 ]

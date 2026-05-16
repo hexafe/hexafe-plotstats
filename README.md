@@ -63,7 +63,7 @@ Current state:
 - `backend="rust"` is an explicit opt-in and returns PNG bytes when the optional native module is installed.
 - `backend="plotly"` is optional. It resolves histogram, IQR, violin, and
   scatter payloads into Plotly-compatible trace/layout dictionaries and creates
-  `go.Figure` objects when the `plotly` extra is installed. Histogram and
+  `go.Figure` objects when the `plotly` extra is installed. Histogram, IQR, and
   violin specs are static by default for dashboard use; scatter remains
   interactive by default.
 
@@ -77,6 +77,51 @@ from hexafe_plotstats import renderer_backend_capabilities
 for backend in renderer_backend_capabilities():
     print(backend.backend, backend.available, backend.default)
 ```
+
+## Large datasets
+
+Grouped IQR and violin payloads keep large NumPy arrays internally instead of
+materializing tuple copies. Resolved violin specs serialize the precomputed body
+polygon and summary markers, not the raw source points.
+
+Large Plotly scatter specs aggregate by default. Time-like X axes use automatic
+minute/hour/day/week buckets based on the requested X range and target
+interactive point count. Raw points are represented as a static raster layer
+with its own legend item, so users can hide or show the raw-density backdrop
+without putting every raw point into the interactive trace.
+
+Run the repeatable large-data benchmark with:
+
+```bash
+PYTHONPATH=src python scripts/benchmark_large_dataset.py --rows 1000000 --columns 5 --repeats 1
+```
+
+Add `--track-memory` when you need Python allocation peaks; it uses
+`tracemalloc` and can inflate render timings.
+
+## Themes And Locale
+
+Use `set_theme(...)` to apply built-in or custom serializable theme tokens:
+
+```python
+from hexafe_plotstats import set_theme
+
+set_theme("dark")
+```
+
+Built-in themes are `default`, `compact_report`, and `dark`. A payload can also
+override the global theme through `metadata={"theme": "dark"}` or
+`metadata={"theme_override": {...}}`.
+
+Use `set_locale(...)` and `translate(...)` for built-in summary labels:
+
+```python
+from hexafe_plotstats import set_locale
+
+set_locale("pl")
+```
+
+Supported built-in locales are `en`, `pl`, and `de`.
 
 ## Large Interactive Scatter
 

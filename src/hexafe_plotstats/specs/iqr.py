@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import Any
+
+import numpy as np
+
 from ..models.payloads import IQRPayload
-from .histogram import _finite_tuple, _format_number, _is_finite_number, _padded_range, _positive_dimension, _ticks
+from ..themes import theme_from_metadata
+from .histogram import _finite_tuple, _format_number, _is_finite_number, _padded_range, _positive_dimension, _tick_count, _ticks
 from .primitives import AxisSpec, BoxPlotSpec, Canvas, LineSpec, MarkerSpec, Rect, ResolvedIQRSpec, Size, TextSpec
 
 
@@ -11,12 +17,19 @@ def iqr_payload_to_resolved_spec(
     width: float = 760,
     height: float = 480,
 ) -> ResolvedIQRSpec:
-    canvas = Canvas(size=Size(width=_positive_dimension(width), height=_positive_dimension(height)))
+    theme = theme_from_metadata(payload.metadata)
+    colors = dict(theme.get("colors") or {})
+    canvas = Canvas(
+        size=Size(width=_positive_dimension(width), height=_positive_dimension(height)),
+        background=str(colors.get("background") or "#ffffff"),
+    )
     plot_rect = _plot_rect(canvas.size.width, canvas.size.height)
     boxes = _box_specs(payload)
     markers = _outlier_markers(boxes)
     y_min, y_max = _y_range(payload, boxes)
 
+    ticks_count = _tick_count(payload.metadata, sample_count=sum(int(box.metadata.get("count") or 0) for box in boxes))
+    y_ticks = _ticks(y_min, y_max, ticks_count)
     axes = (
         AxisSpec(
             orientation="x",
@@ -26,21 +39,23 @@ def iqr_payload_to_resolved_spec(
             tick_values=tuple(box.position for box in boxes),
             tick_labels=tuple(box.label for box in boxes),
             scale="categorical",
+            metadata={"ticks_count": len(boxes)},
         ),
         AxisSpec(
             orientation="y",
             label="value",
             minimum=y_min,
             maximum=y_max,
-            tick_values=_ticks(y_min, y_max),
-            tick_labels=tuple(_format_number(value) for value in _ticks(y_min, y_max)),
+            tick_values=y_ticks,
+            tick_labels=tuple(_format_number(value) for value in y_ticks),
+            metadata={"ticks_count": ticks_count},
         ),
     )
 
     return ResolvedIQRSpec(
         chart_type="iqr",
         canvas=canvas,
-        title=TextSpec(text="IQR", x=36.0, y=28.0, font_size=18.0, weight="600", role="title"),
+        title=TextSpec(text="IQR", x=36.0, y=28.0, font_size=18.0, fill=str(colors.get("text") or "#111827"), weight="600", role="title"),
         plot_rect=plot_rect,
         axes=axes,
         boxes=boxes,
@@ -50,6 +65,7 @@ def iqr_payload_to_resolved_spec(
             "group_count": len(boxes),
             "spec_limits": _spec_limit_metadata(payload),
             "payload_metadata": dict(payload.metadata),
+            "theme": theme,
         },
     )
 
@@ -62,17 +78,17 @@ def _box_specs(payload: IQRPayload) -> tuple[BoxPlotSpec, ...]:
     boxes: list[BoxPlotSpec] = []
     whis = float(payload.metadata.get("whis", 1.5))
     for index, group in enumerate(payload.groups, start=1):
-        values = _finite_tuple(group.values)
+        values = _finite_array(group.values)
         lower_whisker = group.summary.minimum
         upper_whisker = group.summary.maximum
-        if group.summary.q1 is not None and group.summary.q3 is not None and values:
+        if group.summary.q1 is not None and group.summary.q3 is not None and values.size:
             iqr = group.summary.q3 - group.summary.q1
             lower_bound = group.summary.q1 - whis * iqr
             upper_bound = group.summary.q3 + whis * iqr
-            whisker_values = tuple(value for value in values if lower_bound <= value <= upper_bound)
-            if whisker_values:
-                lower_whisker = min(whisker_values)
-                upper_whisker = max(whisker_values)
+            whisker_values = values[(values >= lower_bound) & (values <= upper_bound)]
+            if whisker_values.size:
+                lower_whisker = float(np.min(whisker_values))
+                upper_whisker = float(np.max(whisker_values))
         boxes.append(
             BoxPlotSpec(
                 label=str(group.label),
@@ -87,6 +103,14 @@ def _box_specs(payload: IQRPayload) -> tuple[BoxPlotSpec, ...]:
             )
         )
     return tuple(boxes)
+
+
+def _finite_array(values: Iterable[Any]) -> np.ndarray:
+    try:
+        array = np.asarray(values, dtype=float).reshape(-1)
+    except (TypeError, ValueError):
+        array = np.asarray(list(values), dtype=float).reshape(-1)
+    return array[np.isfinite(array)]
 
 
 def _outlier_markers(boxes: tuple[BoxPlotSpec, ...]) -> tuple[MarkerSpec, ...]:

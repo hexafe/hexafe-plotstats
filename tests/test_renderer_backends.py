@@ -16,6 +16,8 @@ from hexafe_plotstats import (
     build_iqr_payload,
     build_scatter_payload,
     build_violin_payload,
+    get_locale,
+    get_theme,
     renderer_backend_available,
     renderer_backend_capabilities,
     render_histogram,
@@ -27,6 +29,9 @@ from hexafe_plotstats import (
     render_scatter_trend_png,
     render_violin,
     render_violin_png,
+    set_locale,
+    set_theme,
+    translate,
 )
 from hexafe_plotstats.models import ChartRenderResult, HistogramConfig, ScatterConfig, TableRow, ViolinConfig
 from hexafe_plotstats.specs import (
@@ -301,11 +306,29 @@ def test_violin_payload_resolves_to_pure_chart_spec_mapping() -> None:
     assert mapping["schema_version"] == 1
     assert mapping["chart_type"] == "violin"
     assert mapping["groups"][0]["label"] == "A"
-    assert mapping["groups"][0]["values"] == [1.0, 2.0, 3.0]
+    assert mapping["groups"][0]["values"] == []
+    assert mapping["groups"][0]["metadata"]["raw_values_omitted"] is True
     assert len(mapping["groups"][0]["body_points"]) >= 3
     assert mapping["annotation_markers"][0]["kind"] == "mean"
     assert [line["label"] for line in mapping["spec_lines"]] == ["LSL", "Nominal", "USL"]
     assert mapping["metadata"]["group_count"] == 2
+
+
+def test_large_grouped_payloads_keep_arrays_and_resolved_violin_omits_raw_values() -> None:
+    values = np.linspace(1.0, 10.0, 60_000)
+
+    iqr_payload = build_iqr_payload({"A": values})
+    violin_payload = build_violin_payload({"A": values})
+
+    assert isinstance(iqr_payload.groups[0].values, np.ndarray)
+    assert isinstance(violin_payload.groups[0].values, np.ndarray)
+
+    mapping = to_mapping(violin_payload_to_resolved_spec(violin_payload))
+
+    assert mapping["groups"][0]["values"] == []
+    assert mapping["groups"][0]["metadata"]["source_count"] == 60_000
+    assert mapping["groups"][0]["metadata"]["density_method"] == "histogram_density"
+    assert len(json.dumps(mapping)) < 50_000
 
 
 def test_violin_sigma_policy_resolves_to_explicit_lines_and_extrema_markers() -> None:
@@ -323,6 +346,29 @@ def test_violin_sigma_policy_resolves_to_explicit_lines_and_extrema_markers() ->
     marker_kinds = [marker["kind"] for marker in mapping["annotation_markers"]]
     assert "minimum" in marker_kinds
     assert "maximum" in marker_kinds
+
+
+def test_theme_tick_and_locale_api_resolve_into_specs() -> None:
+    original_theme = get_theme()
+    original_locale = get_locale()
+    try:
+        set_theme("dark")
+        payload = build_histogram_payload([1, 2, 3, 4], metadata={"ticks_count": 4})
+        mapping = to_mapping(histogram_payload_to_resolved_spec(payload))
+
+        assert mapping["canvas"]["background"] == "#111827"
+        assert mapping["metadata"]["theme"]["name"] == "dark"
+        assert len(mapping["axes"][0]["tick_values"]) == 4
+
+        set_locale("pl")
+        localized = build_histogram_payload([1, 2, 3, 4])
+        labels = [row.label for row in localized.table_rows]
+
+        assert translate("mean") == "Srednia"
+        assert "Srednia" in labels
+    finally:
+        set_theme(original_theme)
+        set_locale(original_locale)
 
 
 def test_histogram_plotly_spec_preserves_bars_limits_and_table() -> None:

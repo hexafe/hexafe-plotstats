@@ -35,6 +35,7 @@ def plotly_config(*, static: bool = False) -> dict[str, Any]:
 
 
 def axis_layout(axis: dict[str, Any]) -> dict[str, Any]:
+    metadata = axis.get("metadata") if isinstance(axis.get("metadata"), dict) else {}
     layout: dict[str, Any] = {
         "title": {"text": str(axis.get("label") or "")},
         "range": [axis.get("minimum"), axis.get("maximum")],
@@ -42,6 +43,8 @@ def axis_layout(axis: dict[str, Any]) -> dict[str, Any]:
         "tickvals": list(axis.get("tick_values") or ()),
         "ticktext": list(axis.get("tick_labels") or ()),
     }
+    if metadata.get("ticks_count"):
+        layout["nticks"] = int(metadata["ticks_count"])
     if axis.get("scale") == "log":
         layout["type"] = "log"
     return layout
@@ -108,12 +111,22 @@ def clamp(value: float, minimum: float, maximum: float) -> float:
 
 def resolved_layout(resolved: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
     title = resolved.get("title") or {}
+    theme = metadata.get("theme") if isinstance(metadata.get("theme"), dict) else {}
+    colors = theme.get("colors") if isinstance(theme.get("colors"), dict) else {}
+    is_dark = str(theme.get("name") or "").casefold() == "dark"
     return {
-        "template": "plotly_white",
+        "template": "plotly_dark" if is_dark else "plotly_white",
         "title": {"text": str(title.get("text") or resolved.get("chart_type") or "")},
         "hovermode": "closest",
         "xaxis": axis_layout(axis_by_orientation(resolved, "x")),
         "yaxis": axis_layout(axis_by_orientation(resolved, "y")),
         "legend": {"groupclick": "toggleitem"},
+        "paper_bgcolor": colors.get("background"),
+        "plot_bgcolor": colors.get("plot_background"),
+        "font": {
+            "family": theme.get("font_family"),
+            "size": theme.get("font_size"),
+            "color": colors.get("text"),
+        },
         "meta": metadata,
     }

@@ -5,7 +5,11 @@ from typing import Any
 
 from ..models.common import SpecLimits, ViolinConfig
 from ..models.payloads import ViolinGroupPayload, ViolinPayload
-from ._common import normalize_group_values, summarize_distribution
+from ..utils import as_float_tuple
+from ._common import normalize_group_arrays, summarize_distribution
+
+
+_ARRAY_PAYLOAD_THRESHOLD = 50_000
 
 
 def build_violin_payload(
@@ -15,8 +19,8 @@ def build_violin_payload(
 ) -> ViolinPayload:
     config = config or ViolinConfig()
     payload_groups: list[ViolinGroupPayload] = []
-    for label, values in normalize_group_values(groups):
-        summary = summarize_distribution(values, spec_limits)
+    for label, array in normalize_group_arrays(groups):
+        summary = summarize_distribution(array, spec_limits)
         annotations: dict[str, float] = {}
         if config.show_mean and summary.mean is not None:
             annotations["mean"] = summary.mean
@@ -26,6 +30,7 @@ def build_violin_payload(
         if config.show_extrema and summary.minimum is not None and summary.maximum is not None:
             annotations["minimum"] = summary.minimum
             annotations["maximum"] = summary.maximum
+        values = array if array.size >= _ARRAY_PAYLOAD_THRESHOLD else as_float_tuple(array)
         payload_groups.append(ViolinGroupPayload(label=label, values=values, summary=summary, annotations=annotations))
 
     return ViolinPayload(
@@ -38,4 +43,3 @@ def build_violin_payload(
             "sigma_policy": config.sigma_policy,
         },
     )
-

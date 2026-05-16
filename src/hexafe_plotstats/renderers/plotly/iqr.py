@@ -8,13 +8,17 @@ from ...specs import iqr_payload_to_resolved_spec, to_mapping
 from ._common import line_trace, plotly_config, require_plotly_graph_objects, resolved_layout
 
 
-def iqr_payload_to_plotly_spec(payload: IQRPayload) -> dict[str, Any]:
+def iqr_payload_to_plotly_spec(payload: IQRPayload, *, static: bool = True) -> dict[str, Any]:
     resolved = to_mapping(iqr_payload_to_resolved_spec(payload))
     metadata = {
         "kind": "iqr",
         "backend": "plotly",
         "group_count": len(resolved["boxes"]),
         "data_policy": "resolved_box_statistics",
+        "theme": resolved.get("metadata", {}).get("theme"),
+        "default_render_mode": "static" if static else "interactive",
+        "recommended_dashboard_mode": "static_snapshot" if static else "interactive_plotly",
+        "interactive_enabled": not static,
     }
     traces: list[dict[str, Any]] = []
     if resolved["boxes"]:
@@ -25,14 +29,14 @@ def iqr_payload_to_plotly_spec(payload: IQRPayload) -> dict[str, Any]:
 
     layout = resolved_layout(resolved, metadata)
     layout["boxmode"] = "group"
-    return {"data": traces, "layout": layout, "config": plotly_config(static=False), "metadata": metadata, "resolved": resolved}
+    return {"data": traces, "layout": layout, "config": plotly_config(static=static), "metadata": metadata, "resolved": resolved}
 
 
-def render_iqr_plotly(payload: IQRPayload) -> RenderResult:
+def render_iqr_plotly(payload: IQRPayload, *, static: bool = True) -> RenderResult:
     go = require_plotly_graph_objects()
-    spec = iqr_payload_to_plotly_spec(payload)
+    spec = iqr_payload_to_plotly_spec(payload, static=static)
     fig = go.Figure(data=spec["data"], layout=spec["layout"])
-    return RenderResult(fig=fig, ax=None, metadata=spec["metadata"])
+    return RenderResult(fig=fig, ax=None, metadata={**spec["metadata"], "plotly_config": spec["config"]})
 
 
 def _box_trace(boxes: list[dict[str, Any]]) -> dict[str, Any]:

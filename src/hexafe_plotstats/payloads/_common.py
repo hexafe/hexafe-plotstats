@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 
+from ..i18n import translate
 from ..models.payloads import TableRow
 from ..models.common import SpecLimits
 from ..models.fits import DistributionFitResult
@@ -18,6 +19,7 @@ __all__ = [
     "finite_array",
     "fit_distribution",
     "histogram_bins",
+    "normalize_group_arrays",
     "normalize_group_values",
     "paired_finite_arrays_with_counts",
     "paired_finite_arrays",
@@ -59,11 +61,17 @@ def paired_finite_arrays_with_counts(left: Iterable[Any], right: Iterable[Any]) 
 def normalize_group_values(
     groups: Mapping[str, Iterable[Any]] | Sequence[tuple[str, Iterable[Any]]],
 ) -> tuple[tuple[str, tuple[float, ...]], ...]:
+    return tuple((label, as_float_tuple(array)) for label, array in normalize_group_arrays(groups))
+
+
+def normalize_group_arrays(
+    groups: Mapping[str, Iterable[Any]] | Sequence[tuple[str, Iterable[Any]]],
+) -> tuple[tuple[str, np.ndarray], ...]:
     items = groups.items() if isinstance(groups, Mapping) else groups
-    normalized: list[tuple[str, tuple[float, ...]]] = []
+    normalized: list[tuple[str, np.ndarray]] = []
     for label, values in items:
         array = finite_array(values)
-        normalized.append((normalize_label(label), as_float_tuple(array)))
+        normalized.append((normalize_label(label), array))
     return tuple(normalized)
 
 
@@ -78,11 +86,11 @@ def build_table_rows(
     """Build Metroliza-style histogram summary rows for renderer-agnostic payloads."""
 
     rows: list[TableRow] = [
-        _metric_row("Min", _measurement(summary.minimum)),
-        _metric_row("Max", _measurement(summary.maximum)),
-        _metric_row("Mean", _measurement(summary.mean)),
-        _metric_row("Median", _measurement(summary.median)),
-        _metric_row("Std Dev", _measurement(summary.std)),
+        _metric_row(translate("min"), _measurement(summary.minimum)),
+        _metric_row(translate("max"), _measurement(summary.maximum)),
+        _metric_row(translate("mean"), _measurement(summary.mean)),
+        _metric_row(translate("median"), _measurement(summary.median)),
+        _metric_row(translate("std_dev"), _measurement(summary.std)),
     ]
 
     limits = spec_limits or SpecLimits()
@@ -102,7 +110,7 @@ def build_table_rows(
             _metric_row("NOK", _observed_nok(summary, spec_type), badge_palette=_nok_palette(summary.nok_rate)),
             _metric_row("NOK %", _percent(summary.nok_rate), badge_palette=_nok_palette(summary.nok_rate)),
             _metric_row(
-                "Samples",
+                translate("samples"),
                 str(summary.count),
                 badge_palette=_sample_palette(summary.count),
                 metadata={"sample_confidence": _sample_confidence(summary.count)},
@@ -113,7 +121,7 @@ def build_table_rows(
     if normality is not None:
         rows.append(
             _metric_row(
-                "Normality",
+                translate("normality"),
                 _normality_value(normality),
                 badge_palette=_normality_palette(normality),
                 metadata={"method": normality.method, "p_value": normality.p_value},
@@ -150,7 +158,7 @@ def _fit_rows(summary: DistributionSummary, fit: DistributionFitResult) -> tuple
     fit_quality = _fit_quality_key(fit.quality, summary.count)
     rows: list[TableRow] = [
         _metric_row(
-            "Model",
+            translate("model"),
             _fit_name(fit.selected),
             badge_palette=_fit_palette(fit_quality),
             section_break_before=True,
@@ -169,11 +177,11 @@ def _fit_rows(summary: DistributionSummary, fit: DistributionFitResult) -> tuple
             suffix = f" ({', '.join(parts)})" if parts else ""
             rows.append(_metric_row("Est. NOK %", f"{_probability_percent(total)}{suffix}", badge_palette=_nok_palette(total)))
     if fit.quality and fit.quality != "not_run":
-        rows.append(_metric_row("Fit quality", _fit_quality_value(fit_quality), badge_palette=_fit_palette(fit_quality)))
+        rows.append(_metric_row(translate("fit_quality"), _fit_quality_value(fit_quality), badge_palette=_fit_palette(fit_quality)))
 
     warning = _fit_warning(summary, fit_quality)
     if warning:
-        rows.append(_metric_row("Warning", warning, badge_palette="quality_risk"))
+        rows.append(_metric_row(translate("warning"), warning, badge_palette="quality_risk"))
 
     return tuple(rows)
 

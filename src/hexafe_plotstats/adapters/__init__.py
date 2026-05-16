@@ -12,7 +12,7 @@ from ._core import (
     support_profile,
     violin_payload,
 )
-from .metroliza import histogram_from_metroliza_native_payload
+from .metroliza import histogram_from_metroliza_native_payload, plotly_spec_from_metroliza_dashboard_payload
 
 __all__ = [
     "capability",
@@ -24,6 +24,7 @@ __all__ = [
     "render_histogram",
     "render_scatter",
     "render_violin",
+    "plotly_spec_from_metroliza_dashboard_payload",
     "scatter_payload",
     "summarize",
     "support_profile",

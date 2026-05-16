@@ -10,13 +10,13 @@ def clean_numeric_with_warnings(values: Iterable[Any]) -> tuple[np.ndarray, tupl
     """Return finite numeric values and warnings about discarded values."""
 
     warnings: list[str] = []
-    raw_values = list(values)
 
     try:
-        array = np.asarray(raw_values, dtype=float).reshape(-1)
+        array = np.asarray(values, dtype=float).reshape(-1)
         invalid_count = int(array.size - np.count_nonzero(np.isfinite(array)))
         cleaned = array[np.isfinite(array)]
     except (TypeError, ValueError):
+        raw_values = list(values)
         numeric_values: list[float] = []
         invalid_count = 0
         for value in raw_values:
@@ -35,4 +35,3 @@ def clean_numeric_with_warnings(values: Iterable[Any]) -> tuple[np.ndarray, tupl
         warnings.append(f"dropped {invalid_count} non-finite or non-numeric value(s)")
 
     return cleaned, tuple(warnings)
-

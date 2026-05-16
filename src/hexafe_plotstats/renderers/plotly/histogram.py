@@ -16,6 +16,7 @@ def histogram_payload_to_plotly_spec(payload: HistogramPayload, *, static: bool 
         "bar_count": len(resolved["bars"]),
         "curve_count": len(resolved["curves"]),
         "warning_count": len(resolved.get("warnings") or ()),
+        "theme": resolved.get("metadata", {}).get("theme"),
         "default_render_mode": "static" if static else "interactive",
         "recommended_dashboard_mode": "static_snapshot" if static else "interactive_plotly",
         "interactive_enabled": not static,

@@ -6,7 +6,8 @@ from collections.abc import Sequence
 import numpy as np
 
 from ..models.payloads import ScatterPayload
-from .histogram import _format_number, _padded_range, _positive_dimension, _ticks
+from ..themes import theme_from_metadata
+from .histogram import _format_number, _padded_range, _positive_dimension, _tick_count, _ticks
 from .primitives import (
     AxisSpec,
     Canvas,
@@ -29,7 +30,12 @@ def scatter_payload_to_resolved_spec(
     width: float = 760,
     height: float = 480,
 ) -> ResolvedScatterSpec:
-    canvas = Canvas(size=Size(width=_positive_dimension(width), height=_positive_dimension(height)))
+    theme = theme_from_metadata(payload.metadata)
+    colors = dict(theme.get("colors") or {})
+    canvas = Canvas(
+        size=Size(width=_positive_dimension(width), height=_positive_dimension(height)),
+        background=str(colors.get("background") or "#ffffff"),
+    )
     plot_rect = Rect(x=72.0, y=62.0, width=max(canvas.size.width - 104.0, 48.0), height=max(canvas.size.height - 118.0, 48.0))
     x_values, y_values = _finite_arrays(payload)
     point_count = int(x_values.size)
@@ -49,29 +55,34 @@ def scatter_payload_to_resolved_spec(
         hex_cells = ()
         data_policy = "full" if markers else "sampled" if payload.rasterized else "full"
 
+    ticks_count = _tick_count(payload.metadata, sample_count=point_count)
+    x_ticks = _ticks(x_min, x_max, ticks_count)
+    y_ticks = _ticks(y_min, y_max, ticks_count)
     axes = (
         AxisSpec(
             orientation="x",
             label=str(payload.metadata.get("x_label") or "x"),
             minimum=x_min,
             maximum=x_max,
-            tick_values=_ticks(x_min, x_max),
-            tick_labels=tuple(_format_number(value) for value in _ticks(x_min, x_max)),
+            tick_values=x_ticks,
+            tick_labels=tuple(_format_number(value) for value in x_ticks),
+            metadata={"ticks_count": ticks_count},
         ),
         AxisSpec(
             orientation="y",
             label=str(payload.metadata.get("y_label") or "y"),
             minimum=y_min,
             maximum=y_max,
-            tick_values=_ticks(y_min, y_max),
-            tick_labels=tuple(_format_number(value) for value in _ticks(y_min, y_max)),
+            tick_values=y_ticks,
+            tick_labels=tuple(_format_number(value) for value in y_ticks),
+            metadata={"ticks_count": ticks_count},
         ),
     )
 
     return ResolvedScatterSpec(
         chart_type="scatter",
         canvas=canvas,
-        title=TextSpec(text="Scatter", x=36.0, y=28.0, font_size=18.0, weight="600", role="title"),
+        title=TextSpec(text="Scatter", x=36.0, y=28.0, font_size=18.0, fill=str(colors.get("text") or "#111827"), weight="600", role="title"),
         plot_rect=plot_rect,
         axes=axes,
         markers=markers,
@@ -90,6 +101,7 @@ def scatter_payload_to_resolved_spec(
             "finite_point_count": payload.metadata.get("finite_point_count", point_count),
             "dropped_nonfinite_count": payload.metadata.get("dropped_nonfinite_count", 0),
             "interactive_layers": _interactive_layer_metadata(payload, point_count, len(hex_cells), data_policy),
+            "theme": theme,
         },
     )
 

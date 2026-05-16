@@ -16,6 +16,7 @@ def violin_payload_to_plotly_spec(payload: ViolinPayload, *, static: bool = True
         "backend": "plotly",
         "group_count": len(resolved["groups"]),
         "data_policy": "resolved_violin_body",
+        "theme": resolved.get("metadata", {}).get("theme"),
         "default_render_mode": "static" if static else "interactive",
         "recommended_dashboard_mode": "static_snapshot" if static else "interactive_plotly",
         "interactive_enabled": not static,

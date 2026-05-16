@@ -10,9 +10,13 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
 
 - Start with `docs/2026-05-16-audit_implementation_plan.md` for the latest
   audit reconciliation and implementation order.
-- The next recommended implementation slice is large-data scatter/hexbin
-  resolution: reduce 1M-point Python resolve time and memory before adding new
-  interactive, theme, axis, or i18n surfaces.
+- The latest implementation slice covers the large grouped-data path, reusable
+  benchmark tooling, theme tokens, tick-count policy, and locale API. The next
+  recommended consumer slice is to update Metroliza's `hexafe-plotstats`
+  dependency from commit `168edf1...` to this branch/next release, then switch
+  its two HTML dashboard modules to
+  `plotly_spec_from_metroliza_dashboard_payload(...)` for histogram,
+  violin, and IQR specs.
 - Large Plotly scatter should aggregate by default. Temporal X axes should pick
   minute/hour/day/week buckets automatically from the requested X-axis range and
   target point count. Interactive traces should contain only aggregated data;
@@ -41,6 +45,29 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
   helpers now default to static dashboard configs and metadata, with
   `static=False` available as an explicit opt-in. Scatter remains interactive
   by default.
+- Fourth continuation slice: large IQR/violin builders keep NumPy arrays for
+  large groups, `clean_numeric_with_warnings(...)` avoids list materialization
+  for numeric arrays, resolved violin specs omit raw values and serialize
+  bounded body polygons, and large violin density uses a histogram-density
+  approximation instead of exact KDE. `scripts/benchmark_large_dataset.py`
+  now benchmarks 1M x 5 data across histogram, scatter hexbin, scatter trend,
+  IQR, and violin for Matplotlib, Rust/native, and Plotly spec generation.
+- Theme and locale foundation is implemented through `set_theme(...)`,
+  `get_theme(...)`, `set_locale(...)`, and `translate(...)`. Resolved specs
+  carry concrete theme tokens and explicit axis `ticks_count` metadata; default
+  output remains Matplotlib-first and Rust/native remains explicit opt-in.
+- Metroliza adapter foundation: `plotly_spec_from_metroliza_dashboard_payload(...)`
+  converts Metroliza-style dashboard payload mappings into plotstats static
+  Plotly specs for histogram, violin distribution, and IQR charts. This keeps
+  the consumer migration small once Metroliza points at this branch/release.
+- Current large benchmark on this machine with cached native module
+  (`PYTHONPATH=/tmp/hexafe_plotstats_native_bench:src python scripts/benchmark_large_dataset.py --rows 1000000 --columns 5 --repeats 1`):
+  histogram build `0.320s`, Matplotlib `0.506s`, Rust `0.105s`, Plotly spec
+  `0.005s`; scatter hexbin build `0.022s`, Matplotlib `4.147s`, Rust `0.351s`,
+  Plotly spec `0.456s`; scatter hexbin trend build `0.024s`, Matplotlib
+  `3.710s`, Rust `0.610s`, Plotly spec `0.509s`; IQR build `0.299s`,
+  Matplotlib `0.700s`, Rust `2.053s`, Plotly spec `1.338s`; violin build
+  `0.331s`, Matplotlib `0.712s`, Rust `0.161s`, Plotly spec `0.159s`.
 - Validation for this slice: pure-Python pytest `51 passed, 10 skipped`;
   native-enabled pytest `61 passed`; native `resvg` smoke `13 passed`;
   renderer comparison passed under threshold 15 for histogram, scatter,

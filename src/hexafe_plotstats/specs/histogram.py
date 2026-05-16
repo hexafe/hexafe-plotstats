@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from ..models.payloads import HistogramPayload
+from ..themes import theme_from_metadata
 from .primitives import (
     AxisSpec,
     BarSpec,
@@ -27,7 +28,12 @@ def histogram_payload_to_resolved_spec(
     width: float = 900,
     height: float = 520,
 ) -> ResolvedHistogramSpec:
-    canvas = Canvas(size=Size(width=_positive_dimension(width), height=_positive_dimension(height)))
+    theme = theme_from_metadata(payload.metadata)
+    colors = dict(theme.get("colors") or {})
+    canvas = Canvas(
+        size=Size(width=_positive_dimension(width), height=_positive_dimension(height)),
+        background=str(colors.get("background") or "#ffffff"),
+    )
     plot_rect, table_rect = _histogram_layout(canvas.size.width, canvas.size.height)
 
     bars = _bar_specs(payload)
@@ -44,22 +50,28 @@ def histogram_payload_to_resolved_spec(
     y_min, y_max = _y_range(bars, curves)
     axis_labels = _axis_labels(payload)
 
+    tick_count = _tick_count(payload.metadata, sample_count=payload.summary.count)
+    x_ticks = _ticks(x_min, x_max, tick_count)
+    y_ticks = _ticks(y_min, y_max, tick_count)
+
     axes = (
         AxisSpec(
             orientation="x",
             label=axis_labels["x"],
             minimum=x_min,
             maximum=x_max,
-            tick_values=_ticks(x_min, x_max),
-            tick_labels=tuple(_format_number(value) for value in _ticks(x_min, x_max)),
+            tick_values=x_ticks,
+            tick_labels=tuple(_format_number(value) for value in x_ticks),
+            metadata={"ticks_count": tick_count},
         ),
         AxisSpec(
             orientation="y",
             label=axis_labels["y"],
             minimum=y_min,
             maximum=y_max,
-            tick_values=_ticks(y_min, y_max),
-            tick_labels=tuple(_format_number(value) for value in _ticks(y_min, y_max)),
+            tick_values=y_ticks,
+            tick_labels=tuple(_format_number(value) for value in y_ticks),
+            metadata={"ticks_count": tick_count},
         ),
     )
 
@@ -78,6 +90,7 @@ def histogram_payload_to_resolved_spec(
             y=28.0,
             font_size=18.0,
             weight="600",
+            fill=str(colors.get("text") or "#111827"),
             role="title",
         ),
         plot_rect=plot_rect,
@@ -91,7 +104,7 @@ def histogram_payload_to_resolved_spec(
         annotations=annotations,
         table=table,
         warnings=_warnings(payload),
-        metadata={**_metadata(payload), "axis_labels": axis_labels},
+        metadata={**_metadata(payload), "axis_labels": axis_labels, "theme": theme},
     )
 
 
@@ -622,6 +635,15 @@ def _ticks(minimum: float, maximum: float, count: int = 6) -> tuple[float, ...]:
 
     step = (maximum - minimum) / float(count - 1)
     return tuple(round(minimum + step * index, 12) for index in range(count))
+
+
+def _tick_count(metadata: dict[str, Any] | None, *, sample_count: int | None = None, default: int = 6) -> int:
+    raw_count = metadata.get("ticks_count") if isinstance(metadata, dict) else None
+    try:
+        count = int(raw_count)
+    except (TypeError, ValueError):
+        count = 10 if sample_count is not None and sample_count > 100_000 else default
+    return max(2, min(count, 24))
 
 
 def _format_number(value: float) -> str:

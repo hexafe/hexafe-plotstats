@@ -36,7 +36,7 @@ class HistogramPayload:
 @dataclass(frozen=True)
 class ViolinGroupPayload:
     label: str
-    values: tuple[float, ...]
+    values: Sequence[float]
     summary: DistributionSummary
     annotations: dict[str, float] = field(default_factory=dict)
 
@@ -51,7 +51,7 @@ class ViolinPayload:
 @dataclass(frozen=True)
 class IQRGroupPayload:
     label: str
-    values: tuple[float, ...]
+    values: Sequence[float]
     summary: DistributionSummary
     outliers: tuple[float, ...] = ()
 

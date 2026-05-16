@@ -15,6 +15,7 @@ from hexafe_plotstats.adapters import (
     fit_distribution,
     histogram_from_metroliza_native_payload,
     histogram_payload,
+    plotly_spec_from_metroliza_dashboard_payload,
     render_histogram,
     render_scatter,
     render_violin,
@@ -210,6 +211,36 @@ def test_metroliza_native_histogram_payload_adapter_preserves_overlay_curves_and
     assert mapping["annotation_lines"][0]["coordinate_space"] == "canvas"
     assert mapping["annotations"][0]["metadata"]["box_y"] == 1.05
     assert mapping["annotations"][1]["role"] == "curve_note"
+
+
+def test_metroliza_dashboard_payload_adapter_builds_static_plotly_specs() -> None:
+    violin_spec = plotly_spec_from_metroliza_dashboard_payload(
+        {
+            "type": "distribution",
+            "render_mode": "violin",
+            "labels": ["A", "B"],
+            "series": [[1.0, 2.0, 3.0], [2.0, 3.0, 4.0]],
+            "limits": {"lsl": 0.0, "nominal": 2.5, "usl": 5.0},
+        },
+        title="Diameter violin",
+        theme="dark",
+    )
+    iqr_spec = plotly_spec_from_metroliza_dashboard_payload(
+        {
+            "type": "iqr",
+            "labels": ["A", "B"],
+            "series": [[1.0, 2.0, 100.0], [2.0, 3.0, 4.0]],
+            "limits": {"lsl": 0.0, "nominal": 2.5, "usl": 5.0},
+        },
+        title="Diameter IQR",
+    )
+
+    assert violin_spec["metadata"]["backend"] == "plotly"
+    assert violin_spec["metadata"]["interactive_enabled"] is False
+    assert violin_spec["metadata"]["theme"]["name"] == "dark"
+    assert all(trace.get("meta", {}).get("contains_raw_points") is not True for trace in violin_spec["data"])
+    assert iqr_spec["metadata"]["kind"] == "iqr"
+    assert iqr_spec["config"]["staticPlot"] is True
 
 
 def test_renderer_backend_default_behavior_stays_matplotlib_first() -> None:
