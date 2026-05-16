@@ -36,6 +36,11 @@ from hexafe_plotstats.specs import (
     to_mapping,
     violin_payload_to_resolved_spec,
 )
+from hexafe_plotstats.renderers.plotly import (
+    histogram_payload_to_plotly_spec,
+    iqr_payload_to_plotly_spec,
+    violin_payload_to_plotly_spec,
+)
 import hexafe_plotstats.renderers.rust.backend as rust_backend
 
 
@@ -320,6 +325,60 @@ def test_violin_sigma_policy_resolves_to_explicit_lines_and_extrema_markers() ->
     assert "maximum" in marker_kinds
 
 
+def test_histogram_plotly_spec_preserves_bars_limits_and_table() -> None:
+    payload = build_histogram_payload(
+        [1, 2, 2, 3, 4],
+        SpecLimits(lsl=0.5, nominal=2.5, usl=4.5),
+        config=HistogramConfig(density=False, include_fit=False),
+        metadata={"title": "Diameter", "axis_labels": {"x": "Measurement", "y": "Count"}},
+    )
+
+    spec = histogram_payload_to_plotly_spec(payload)
+
+    assert spec["metadata"]["kind"] == "histogram"
+    assert spec["layout"]["xaxis"]["title"]["text"] == "Measurement"
+    assert spec["layout"]["yaxis"]["title"]["text"] == "Count"
+    traces_by_type = {trace["type"]: trace for trace in spec["data"]}
+    assert traces_by_type["bar"]["name"] == "Histogram"
+    assert len(traces_by_type["bar"]["x"]) == len(payload.bin_values)
+    assert any(trace.get("name") == "LSL" for trace in spec["data"])
+    assert any(trace.get("type") == "table" and trace["meta"]["row_count"] >= 3 for trace in spec["data"])
+
+
+def test_iqr_plotly_spec_uses_resolved_box_statistics() -> None:
+    payload = build_iqr_payload(
+        {"A": [1, 2, 3, 100], "B": [2, 3, 4, 5]},
+        SpecLimits(lsl=0.0, nominal=2.5, usl=6.0),
+    )
+
+    spec = iqr_payload_to_plotly_spec(payload)
+
+    box_trace = next(trace for trace in spec["data"] if trace["type"] == "box")
+    assert box_trace["meta"]["data_policy"] == "resolved_box_statistics"
+    assert box_trace["meta"]["contains_raw_points"] is False
+    assert box_trace["x"] == [1.0, 2.0]
+    assert spec["layout"]["xaxis"]["ticktext"] == ["A", "B"]
+    assert len(box_trace["q1"]) == 2
+    assert "y" not in box_trace
+    assert any(trace.get("name") == "Outliers" for trace in spec["data"])
+
+
+def test_violin_plotly_spec_uses_resolved_body_polygons() -> None:
+    payload = build_violin_payload(
+        {"A": [1, 2, 3], "B": [2, 3, 4]},
+        SpecLimits(lsl=0.0, nominal=2.5, usl=5.0),
+    )
+
+    spec = violin_payload_to_plotly_spec(payload)
+
+    body_traces = [trace for trace in spec["data"] if trace.get("fill") == "toself"]
+    assert len(body_traces) == 2
+    assert all(trace["meta"]["data_policy"] == "resolved_violin_body" for trace in body_traces)
+    assert all(trace["meta"]["contains_raw_points"] is False for trace in body_traces)
+    assert all(len(trace["x"]) < 250 for trace in body_traces)
+    assert any(trace["meta"].get("kind") == "mean" for trace in spec["data"])
+
+
 def test_scatter_payload_resolves_to_pure_chart_spec_mapping_with_trend() -> None:
     payload = build_scatter_payload(
         [1, 2, 3, 4],
@@ -442,20 +501,21 @@ def test_unsupported_backend_names_raise_clear_errors() -> None:
         render_histogram_png(payload, backend="matplotlib")
 
 
-def test_plotly_backend_reports_optional_dependency_when_missing() -> None:
-    payload = build_scatter_payload([1, 2, 3], [3, 2, 1])
-
+@pytest.mark.parametrize(
+    ("renderer", "payload", "chart_name"),
+    [
+        (render_histogram, build_histogram_payload([1, 2, 3]), "histogram"),
+        (render_violin, build_violin_payload({"A": [1, 2, 3]}), "violin"),
+        (render_iqr, build_iqr_payload({"A": [1, 2, 3]}), "iqr"),
+        (render_scatter, build_scatter_payload([1, 2, 3], [3, 2, 1]), "scatter"),
+    ],
+)
+def test_plotly_backend_reports_optional_dependency_when_missing(renderer, payload, chart_name: str) -> None:
     if renderer_backend_available("plotly"):
-        result = render_scatter(payload, backend="plotly")
+        result = renderer(payload, backend="plotly")
+        assert result.metadata["kind"] == chart_name
         assert result.metadata["backend"] == "plotly"
         return
 
     with pytest.raises(RendererBackendUnavailable, match="plotly renderer is not installed"):
-        render_scatter(payload, backend="plotly")
-
-
-def test_plotly_backend_reports_chart_families_not_yet_wired() -> None:
-    payload = build_histogram_payload([1, 2, 3])
-
-    with pytest.raises(RendererBackendUnavailable, match="plotly renderer for histogram is not implemented yet"):
-        render_histogram(payload, backend="plotly")
+        renderer(payload, backend="plotly")

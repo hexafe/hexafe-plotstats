@@ -24,11 +24,27 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
   scatter scaffold emits aggregated traces plus a raw static legend trace for
   large data. Fresh 1M native hexbin smoke measured about `0.73s` total and
   `70.6 MB` peak on this machine.
+- Second continuation slice on the same branch: large Plotly
+  scatter now renders raw points as a bounded static-raster heatmap trace with
+  its own `scatter_raw` legend group, and Plotly converters/renderers now exist
+  for histogram, IQR, and violin. Histogram preserves bars/curves/spec
+  lines/tables from the resolved spec; IQR uses resolved quartile/whisker
+  summaries; violin uses resolved body polygons and annotation markers.
 - Validation for this slice: pure-Python pytest `51 passed, 10 skipped`;
   native-enabled pytest `61 passed`; native `resvg` smoke `13 passed`;
   renderer comparison passed under threshold 15 for histogram, scatter,
   scatter trend, IQR, and violin; `compileall`, `cargo fmt --check`, and
   `cargo test --locked` passed.
+- Focused validation for the Plotly continuation slice:
+  `PYTHONPATH=src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats python -m pytest tests/test_interactive_scatter.py tests/test_renderer_backends.py -q`
+  -> `36 passed`; targeted `compileall` also passed.
+- Full pure-Python validation for the Plotly continuation slice:
+  `PYTHONPATH=src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats python -m pytest -q`
+  -> `56 passed, 10 skipped`; `python -m compileall -q src tests scripts examples`
+  and `git diff --check` passed.
+- 1M Plotly hexbin spec smoke for the continuation slice: about `0.30s`,
+  `55.5 MB` traced peak, raw raster payload cells `24,576`, aggregate points
+  `398`, and trace JSON about `0.18 MB`.
 - Keep Matplotlib as the default backend and Rust/native as explicit opt-in
   while release packaging remains pre-release.
 

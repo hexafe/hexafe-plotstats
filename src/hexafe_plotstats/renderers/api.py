@@ -7,7 +7,6 @@ from .base import (
     NativeRenderProfile,
     RendererBackend,
     RendererBackendCapability,
-    RendererBackendUnavailable,
 )
 from ..models.payloads import HistogramPayload, IQRPayload, ScatterPayload, ViolinPayload
 from ..models.render import ChartRenderResult, RenderResult
@@ -71,7 +70,9 @@ def render_histogram(
 
         return render_histogram_rust(payload, profile=profile)
     if backend == "plotly":
-        raise RendererBackendUnavailable("plotly renderer for histogram is not implemented yet")
+        from .plotly import render_histogram_plotly
+
+        return render_histogram_plotly(payload)
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 
@@ -90,7 +91,9 @@ def render_violin(
 
         return render_violin_rust(payload, profile=profile)
     if backend == "plotly":
-        raise RendererBackendUnavailable("plotly renderer for violin is not implemented yet")
+        from .plotly import render_violin_plotly
+
+        return render_violin_plotly(payload)
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 
@@ -109,7 +112,9 @@ def render_iqr(
 
         return render_iqr_rust(payload, profile=profile)
     if backend == "plotly":
-        raise RendererBackendUnavailable("plotly renderer for iqr is not implemented yet")
+        from .plotly import render_iqr_plotly
+
+        return render_iqr_plotly(payload)
     raise ValueError(f"unsupported renderer backend: {backend}")
 
 

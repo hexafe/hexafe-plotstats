@@ -18,7 +18,16 @@ from .matplotlib import (
     render_scatter_matplotlib,
     render_violin_matplotlib,
 )
-from .plotly import render_scatter_plotly, scatter_payload_to_plotly_spec
+from .plotly import (
+    histogram_payload_to_plotly_spec,
+    iqr_payload_to_plotly_spec,
+    render_histogram_plotly,
+    render_iqr_plotly,
+    render_scatter_plotly,
+    render_violin_plotly,
+    scatter_payload_to_plotly_spec,
+    violin_payload_to_plotly_spec,
+)
 
 __all__ = [
     "RendererBackendCapability",
@@ -28,17 +37,23 @@ __all__ = [
     "renderer_backend_capabilities",
     "render_histogram",
     "render_histogram_matplotlib",
+    "render_histogram_plotly",
     "render_histogram_png",
     "render_iqr",
     "render_iqr_matplotlib",
+    "render_iqr_plotly",
     "render_iqr_png",
     "render_scatter",
     "render_scatter_matplotlib",
     "render_scatter_plotly",
     "render_scatter_png",
     "render_scatter_trend_png",
+    "histogram_payload_to_plotly_spec",
+    "iqr_payload_to_plotly_spec",
     "scatter_payload_to_plotly_spec",
     "render_violin",
     "render_violin_matplotlib",
+    "render_violin_plotly",
     "render_violin_png",
+    "violin_payload_to_plotly_spec",
 ]

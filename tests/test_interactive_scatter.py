@@ -79,16 +79,20 @@ def test_large_plotly_scatter_spec_uses_aggregate_trace_and_static_raw_legend() 
     assert spec["metadata"]["data_policy"] == "aggregated_hexbin"
     assert spec["metadata"]["interactive_contains_raw_points"] is False
     assert spec["metadata"]["source_point_count"] == count
-    aggregate, raw = spec["data"]
+    raw, aggregate = spec["data"]
     assert aggregate["name"] == "Aggregated density"
     assert len(aggregate["x"]) < 2_000
     assert len(aggregate["x"]) == len(aggregate["customdata"])
     assert aggregate["meta"]["contains_raw_points"] is False
     assert aggregate["marker"]["colorbar"]["title"] == "points per cell"
     assert raw["name"] == "Raw points"
+    assert raw["type"] == "heatmap"
     assert raw["legendgroup"] == "scatter_raw"
-    assert raw["x"] == []
-    assert raw["y"] == []
+    assert len(raw["x"]) < 300
+    assert len(raw["y"]) < 300
     assert raw["showlegend"] is True
     assert raw["meta"]["role"] == "static_raw_overlay"
     assert raw["meta"]["contains_raw_points"] is False
+    assert raw["meta"]["rendering"] == "static_raster_heatmap"
+    assert raw["meta"]["source_point_count"] == count
+    assert raw["meta"]["raster_payload_cell_count"] < count

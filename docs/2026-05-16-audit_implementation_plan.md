@@ -359,3 +359,30 @@ Implemented in the first slice:
 - Tests cover temporal bucket selection, bounded interactive payloads, raw
   static legend metadata, bounded large hexbin mapping size, and large Plotly
   scatter specs that do not serialize raw points into interactive traces.
+
+Implemented in the second continuation slice:
+
+- Large Plotly scatter raw data now renders as a bounded `heatmap` raster trace
+  (`static_raster_heatmap`) instead of only a placeholder legend entry. The raw
+  raster trace has its own `scatter_raw` legend group and contains a bounded
+  grid, not the raw point list.
+- Plotly converters/renderers now exist for histogram, IQR, and violin in
+  addition to scatter. They are optional at runtime: dict conversion does not
+  require Plotly, while `render_*(..., backend="plotly")` raises
+  `RendererBackendUnavailable` unless the `plotly` extra is installed.
+- Histogram Plotly specs preserve bars, curves, spec/mean lines, axis labels,
+  and summary tables from the resolved spec.
+- IQR Plotly specs use resolved quartile/whisker statistics instead of sending
+  all group values as raw Plotly box data.
+- Violin Plotly specs use resolved body polygons and annotation markers instead
+  of sending all raw group values.
+- Focused validation for this slice:
+  `PYTHONPATH=src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats python -m pytest tests/test_interactive_scatter.py tests/test_renderer_backends.py -q`
+  -> `36 passed`; targeted `compileall` also passed.
+- Full pure-Python validation:
+  `PYTHONPATH=src MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib-hexafe-plotstats python -m pytest -q`
+  -> `56 passed, 10 skipped`; full `compileall` and `git diff --check`
+  passed.
+- Large Plotly hexbin spec smoke with 1M points completed in about `0.30s`,
+  traced peak memory about `55.5 MB`, raw raster payload cells `24,576`,
+  aggregate points `398`, and trace JSON about `0.18 MB`.

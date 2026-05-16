@@ -23,7 +23,7 @@ pip install -e .[plotly]
 
 The core package depends on `numpy`, `scipy`, and `matplotlib`.
 The `pandas` extra enables pandas adapter helpers.
-The `plotly` extra enables the interactive scatter backend.
+The `plotly` extra enables the optional interactive backend.
 
 ## Quick start
 
@@ -61,9 +61,9 @@ Current state:
 
 - `backend="matplotlib"` is the default and returns `RenderResult(fig, ax, metadata)`.
 - `backend="rust"` is an explicit opt-in and returns PNG bytes when the optional native module is installed.
-- `backend="plotly"` is optional. The first scaffold supports scatter through
-  Plotly-compatible trace/layout dictionaries and `go.Figure` creation when the
-  `plotly` extra is installed.
+- `backend="plotly"` is optional. It resolves histogram, IQR, violin, and
+  scatter payloads into Plotly-compatible trace/layout dictionaries and creates
+  `go.Figure` objects when the `plotly` extra is installed.
 
 This keeps the user-facing API stable while Rust parity work proceeds behind the backend boundary.
 
@@ -96,9 +96,9 @@ spec = build_scatter_interactive_spec(
 For temporal X axes, the bucket is selected automatically from `minute`,
 `hour`, `day`, or `week` based on the requested X-axis range and the target
 interactive point count. The interactive layer contains aggregated buckets only.
-Raw points are represented as a separate static-raster layer with its own legend
-group, so a Plotly/HTML consumer can let users hide raw data without removing
-the aggregated interactive trace.
+Raw points are rendered as a separate bounded static-raster heatmap layer with
+its own legend group, so users can hide raw data without removing the aggregated
+interactive trace and without serializing every raw point into Plotly.
 
 ## Supported charts
 

@@ -32,7 +32,16 @@ from .renderers.matplotlib.histogram import render_histogram_matplotlib
 from .renderers.matplotlib.iqr import render_iqr_matplotlib
 from .renderers.matplotlib.scatter import render_scatter_matplotlib
 from .renderers.matplotlib.violin import render_violin_matplotlib
-from .renderers.plotly import render_scatter_plotly, scatter_payload_to_plotly_spec
+from .renderers.plotly import (
+    histogram_payload_to_plotly_spec,
+    iqr_payload_to_plotly_spec,
+    render_histogram_plotly,
+    render_iqr_plotly,
+    render_scatter_plotly,
+    render_violin_plotly,
+    scatter_payload_to_plotly_spec,
+    violin_payload_to_plotly_spec,
+)
 from .renderers import (
     RendererBackendCapability,
     RendererBackendUnavailable,
@@ -86,11 +95,15 @@ __all__ = [
     "build_violin_payload",
     "compute_capability",
     "fit_distribution",
+    "histogram_payload_to_plotly_spec",
+    "iqr_payload_to_plotly_spec",
     "render_histogram",
     "render_histogram_matplotlib",
+    "render_histogram_plotly",
     "render_histogram_png",
     "render_iqr",
     "render_iqr_matplotlib",
+    "render_iqr_plotly",
     "render_iqr_png",
     "render_scatter",
     "render_scatter_matplotlib",
@@ -99,8 +112,10 @@ __all__ = [
     "render_scatter_trend_png",
     "render_violin",
     "render_violin_matplotlib",
+    "render_violin_plotly",
     "render_violin_png",
     "select_temporal_bucket",
     "scatter_payload_to_plotly_spec",
     "summarize_distribution",
+    "violin_payload_to_plotly_spec",
 ]
