@@ -308,7 +308,7 @@ def _distribution_artifact(
             sigma_policy="both_3_sigma",
         ),
     )
-    violin = replace(violin, metadata=_metadata_with_theme(violin.metadata, theme))
+    violin = replace(violin, metadata=_series_axis_metadata(violin.metadata, payload, theme=theme))
     result: dict[str, Any] = {
         "payload_summary": _grouped_series_summary("distribution", groups),
         "payload_details": {"groups": list(groups.keys())},
@@ -343,9 +343,14 @@ def _iqr_artifact(
     iqr = build_iqr_payload(
         groups,
         spec_limits=_spec_limits_from_payload(payload),
-        config=IQRConfig(showfliers=True),
+        config=IQRConfig(
+            showfliers=True,
+            show_mean=True,
+            show_extrema=True,
+            sigma_policy="both_3_sigma",
+        ),
     )
-    iqr = replace(iqr, metadata=_metadata_with_theme(iqr.metadata, theme))
+    iqr = replace(iqr, metadata=_series_axis_metadata(iqr.metadata, payload, theme=theme))
     result: dict[str, Any] = {
         "payload_summary": _grouped_series_summary("iqr", groups),
         "payload_details": {"groups": list(groups.keys())},
@@ -392,7 +397,13 @@ def _scatter_like_artifact(
         x_values,
         y_values,
         config=ScatterConfig(include_trend=chart_type == "trend"),
-        metadata={"title": str(payload.get("title") or ""), "theme": theme},
+        metadata={
+            "title": str(payload.get("title") or ""),
+            "theme": theme,
+            "x_label": _scatter_x_axis_label(payload, chart_type),
+            "y_label": _scatter_y_axis_label(payload),
+            "reference_lines": _scatter_reference_lines_from_payload(payload, y_values),
+        },
     )
     result: dict[str, Any] = {
         "payload_summary": {
@@ -623,7 +634,7 @@ def _grouped_histogram_plotly_spec(
             "title": {"text": str(payload.get("title") or "Grouped histogram")},
             "barmode": "overlay",
             "yaxis": {"tickformat": ".0%", "title": {"text": "Frequency (%)"}},
-            "xaxis": {"title": {"text": "Measurement"}},
+            "xaxis": {"title": {"text": _histogram_x_axis_label(payload)}},
             "shapes": shapes,
             "annotations": annotations,
             "meta": {
@@ -711,45 +722,9 @@ def _decorate_scatter_layout(
     metadata.setdefault("theme", theme)
     layout = spec.setdefault("layout", {})
     layout.setdefault("title", {"text": str(payload.get("title") or chart_type)})
-    layout.setdefault("xaxis", {}).setdefault("title", {"text": str(payload.get("x_label") or "X")})
-    layout.setdefault("yaxis", {}).setdefault("title", {"text": str(payload.get("y_label") or "Measurement")})
+    layout.setdefault("xaxis", {}).setdefault("title", {"text": _scatter_x_axis_label(payload, chart_type)})
+    layout.setdefault("yaxis", {}).setdefault("title", {"text": _scatter_y_axis_label(payload)})
     layout.setdefault("meta", {})["theme"] = theme
-    horizontal_limits = _horizontal_reference_lines_from_payload(payload)
-    shapes = list(layout.get("shapes") or [])
-    annotations = list(layout.get("annotations") or [])
-    for label, value, color in horizontal_limits:
-        number = _coerce_float(value)
-        if number is None:
-            continue
-        shapes.append(
-            {
-                "type": "line",
-                "xref": "paper",
-                "yref": "y",
-                "x0": 0,
-                "x1": 1,
-                "y0": number,
-                "y1": number,
-                "line": {"color": color, "width": 1, "dash": "dash"},
-            }
-        )
-        annotations.append(
-            {
-                "xref": "paper",
-                "yref": "y",
-                "x": 1.0,
-                "y": number,
-                "xanchor": "right",
-                "text": f"{label}={number:.3f}",
-                "showarrow": False,
-                "font": {"size": 11, "color": color},
-                "bgcolor": "rgba(255,255,255,0.86)",
-            }
-        )
-    if shapes:
-        layout["shapes"] = shapes
-    if annotations:
-        layout["annotations"] = annotations
 
 
 def _histogram_metadata_for_dashboard(
@@ -827,6 +802,81 @@ def _horizontal_reference_lines_from_payload(payload: Mapping[str, Any]) -> list
     return fallback
 
 
+def _scatter_reference_lines_from_payload(payload: Mapping[str, Any], y_values: Sequence[Any]) -> list[dict[str, Any]]:
+    references = [
+        {"label": label, "kind": label.lower(), "value": value, "color": color}
+        for label, value, color in _horizontal_reference_lines_from_payload(payload)
+        if _coerce_float(value) is not None
+    ]
+    mean = _mean_from_values(y_values)
+    if mean is not None:
+        references.append({"label": "Mean", "kind": "mean", "value": mean, "color": "#111827", "dash": (4.0, 2.0)})
+    return references
+
+
+def _mean_from_values(values: Sequence[Any]) -> float | None:
+    numbers = [number for value in values if (number := _coerce_float(value)) is not None]
+    if not numbers:
+        return None
+    return sum(numbers) / len(numbers)
+
+
+def _series_axis_metadata(
+    metadata: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    *,
+    theme: str | Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    resolved = _metadata_with_theme(metadata, theme)
+    y_label = _series_y_axis_label(payload)
+    resolved["axis_labels"] = {
+        "x": str(payload.get("x_label") or "Groups"),
+        "y": y_label,
+    }
+    resolved["x_label"] = str(payload.get("x_label") or "Groups")
+    resolved["y_label"] = y_label
+    resolved["title"] = str(payload.get("title") or metadata.get("title") or "")
+    return resolved
+
+
+def _series_y_axis_label(payload: Mapping[str, Any]) -> str:
+    style = payload.get("style") if isinstance(payload.get("style"), Mapping) else {}
+    for key in ("y_label", "metric_label", "characteristic", "characteristic_name"):
+        value = payload.get(key)
+        if value:
+            return str(value)
+    return str(style.get("axis_label_y") or "Measurement")
+
+
+def _scatter_x_axis_label(payload: Mapping[str, Any], chart_type: str) -> str:
+    style = payload.get("style") if isinstance(payload.get("style"), Mapping) else {}
+    value = payload.get("x_label") or style.get("axis_label_x")
+    if value:
+        return str(value)
+    if chart_type in {"time_series", "time_series_raw_aggregate"}:
+        return "Datetime"
+    return "Samples"
+
+
+def _scatter_y_axis_label(payload: Mapping[str, Any]) -> str:
+    style = payload.get("style") if isinstance(payload.get("style"), Mapping) else {}
+    for key in ("y_label", "metric_label", "characteristic", "characteristic_name"):
+        value = payload.get(key)
+        if value:
+            return str(value)
+    return str(style.get("axis_label_y") or "Measurement")
+
+
+def _histogram_x_axis_label(payload: Mapping[str, Any]) -> str:
+    style = payload.get("style") if isinstance(payload.get("style"), Mapping) else {}
+    label = str(payload.get("x_label") or style.get("axis_label_x") or "").strip()
+    if label and "bin" in label.casefold():
+        return label
+    if label:
+        return f"{label} bins"
+    return "Bins"
+
+
 def _metadata_with_theme(metadata: Mapping[str, Any], theme: str | Mapping[str, Any] | None) -> dict[str, Any]:
     resolved = dict(metadata)
     if theme is not None:
@@ -871,8 +921,8 @@ def _histogram_metadata_from_native_payload(payload: Mapping[str, Any]) -> dict[
     metadata = {
         "title": str(payload.get("title") or ""),
         "axis_labels": {
-            "x": str(style.get("axis_label_x") or "Measurement"),
-            "y": str(style.get("axis_label_y") or "Count"),
+            "x": _histogram_x_axis_label(payload),
+            "y": str(style.get("axis_label_y") or "Frequency"),
         },
         "summary_table_title": str(summary_table.get("title") or payload.get("summary_table_title") or "Parameter"),
         "mean_line": dict(payload.get("mean_line") or {}) if isinstance(payload.get("mean_line"), Mapping) else {},

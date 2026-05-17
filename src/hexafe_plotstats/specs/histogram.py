@@ -491,15 +491,24 @@ def _canvas_y_from_axes(value: Any, plot_rect: Rect, *, default: float) -> float
 
 
 def _axis_labels(payload: HistogramPayload) -> dict[str, str]:
+    default_y = "Density" if payload.density else "Frequency"
+    y_mode = str(
+        payload.metadata.get("histogram_y_mode")
+        or payload.metadata.get("y_mode")
+        or payload.metadata.get("normalization")
+        or ""
+    ).strip().lower()
+    if y_mode in {"relative_percent", "frequency_percent", "percent"}:
+        default_y = "Frequency (%)"
     axis_labels = payload.metadata.get("axis_labels")
     if isinstance(axis_labels, dict):
         return {
-            "x": str(axis_labels.get("x") or "value"),
-            "y": str(axis_labels.get("y") or ("density" if payload.density else "count")),
+            "x": str(axis_labels.get("x") or "Bins"),
+            "y": str(axis_labels.get("y") or default_y),
         }
     return {
-        "x": str(payload.metadata.get("x_label") or "value"),
-        "y": str(payload.metadata.get("y_label") or ("density" if payload.density else "count")),
+        "x": str(payload.metadata.get("x_label") or "Bins"),
+        "y": str(payload.metadata.get("y_label") or default_y),
     }
 
 

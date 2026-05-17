@@ -35,4 +35,14 @@ def build_iqr_payload(
         values = array if array.size >= _ARRAY_PAYLOAD_THRESHOLD else as_float_tuple(array)
         payload_groups.append(IQRGroupPayload(label=label, values=values, summary=summary, outliers=outliers))
 
-    return IQRPayload(groups=tuple(payload_groups), spec_limits=spec_limits, metadata={"whis": config.whis, "showfliers": config.showfliers})
+    return IQRPayload(
+        groups=tuple(payload_groups),
+        spec_limits=spec_limits,
+        metadata={
+            "whis": config.whis,
+            "showfliers": config.showfliers,
+            "show_mean": config.show_mean,
+            "show_extrema": config.show_extrema,
+            "sigma_policy": config.sigma_policy,
+        },
+    )

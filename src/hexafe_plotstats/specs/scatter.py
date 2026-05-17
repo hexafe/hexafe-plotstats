@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 
@@ -41,7 +42,13 @@ def scatter_payload_to_resolved_spec(
     point_count = int(x_values.size)
     trend_line = _trend_line_from_arrays(payload, x_values, y_values)
     x_min, x_max = _axis_range_array(x_values, trend_line, axis="x")
-    y_min, y_max = _axis_range_array(y_values, trend_line, axis="y")
+    reference_lines = _reference_lines_from_metadata(payload, x_min, x_max)
+    y_min, y_max = _axis_range_array(
+        y_values,
+        trend_line,
+        axis="y",
+        extra_values=tuple(value for line in reference_lines for value in (line.y0, line.y1)),
+    )
 
     if payload.mode == "hexbin":
         markers = ()
@@ -61,7 +68,7 @@ def scatter_payload_to_resolved_spec(
     axes = (
         AxisSpec(
             orientation="x",
-            label=str(payload.metadata.get("x_label") or "x"),
+            label=str(payload.metadata.get("x_label") or "Samples"),
             minimum=x_min,
             maximum=x_max,
             tick_values=x_ticks,
@@ -70,7 +77,7 @@ def scatter_payload_to_resolved_spec(
         ),
         AxisSpec(
             orientation="y",
-            label=str(payload.metadata.get("y_label") or "y"),
+            label=str(payload.metadata.get("y_label") or "Measurement"),
             minimum=y_min,
             maximum=y_max,
             tick_values=y_ticks,
@@ -89,6 +96,7 @@ def scatter_payload_to_resolved_spec(
         marker_batches=marker_batches,
         hex_cells=hex_cells,
         trend_line=trend_line,
+        reference_lines=reference_lines,
         metadata={
             "mode": payload.mode,
             "point_count": point_count,
@@ -254,11 +262,78 @@ def _trend_line_from_arrays(payload: ScatterPayload, x_values: np.ndarray, y_val
     )
 
 
-def _axis_range_array(values: np.ndarray, trend_line: LineSpec | None, *, axis: str) -> tuple[float, float]:
+def _reference_lines_from_metadata(payload: ScatterPayload, x_min: float, x_max: float) -> tuple[LineSpec, ...]:
+    raw_items: list[Any] = []
+    for key in ("reference_lines", "horizontal_reference_lines"):
+        candidate = payload.metadata.get(key)
+        if isinstance(candidate, (list, tuple)):
+            raw_items.extend(candidate)
+
+    lines: list[LineSpec] = []
+    for index, raw in enumerate(raw_items, start=1):
+        line = _reference_line_from_raw(raw, index=index, x_min=x_min, x_max=x_max)
+        if line is not None:
+            lines.append(line)
+    return tuple(lines)
+
+
+def _reference_line_from_raw(raw: Any, *, index: int, x_min: float, x_max: float) -> LineSpec | None:
+    if isinstance(raw, dict):
+        value = raw.get("value", raw.get("y", raw.get("y0")))
+        label = str(raw.get("label") or raw.get("name") or raw.get("kind") or f"Reference {index}")
+        kind = str(raw.get("kind") or label).strip().lower().replace(" ", "_")
+        stroke = str(raw.get("color") or raw.get("stroke") or _reference_line_color(kind))
+        width = float(raw.get("width") or raw.get("stroke_width") or 1.0)
+        dash = raw.get("dash") if isinstance(raw.get("dash"), (list, tuple)) else (6.0, 4.0)
+    elif isinstance(raw, (list, tuple)) and len(raw) >= 2:
+        label = str(raw[0] or f"Reference {index}")
+        value = raw[1]
+        kind = label.strip().lower().replace(" ", "_")
+        stroke = _reference_line_color(kind)
+        width = 1.0
+        dash = (6.0, 4.0)
+    else:
+        return None
+
+    if not _is_finite_number(value):
+        return None
+    y_value = float(value)
+    return LineSpec(
+        x0=x_min,
+        y0=y_value,
+        x1=x_max,
+        y1=y_value,
+        label=label,
+        kind=f"reference_{kind}",
+        stroke=stroke,
+        stroke_width=width,
+        dash=tuple(float(item) for item in dash),
+        metadata={"source": "metadata", "index": index},
+    )
+
+
+def _reference_line_color(kind: str) -> str:
+    normalized = kind.strip().lower()
+    if normalized in {"lsl", "usl", "lower_spec", "upper_spec"}:
+        return "#dc2626"
+    if normalized in {"nominal", "target"}:
+        return "#16a34a"
+    if normalized == "mean":
+        return "#111827"
+    return "#7c3aed"
+
+
+def _axis_range_array(
+    values: np.ndarray,
+    trend_line: LineSpec | None,
+    *,
+    axis: str,
+    extra_values: Sequence[float] = (),
+) -> tuple[float, float]:
     range_values = values[np.isfinite(values)]
-    extras = ()
+    extras: tuple[float, ...] = tuple(float(value) for value in extra_values if _is_finite_number(value))
     if trend_line is not None:
-        extras = (trend_line.x0, trend_line.x1) if axis == "x" else (trend_line.y0, trend_line.y1)
+        extras = extras + ((trend_line.x0, trend_line.x1) if axis == "x" else (trend_line.y0, trend_line.y1))
 
     finite_extras = tuple(float(value) for value in extras if math.isfinite(float(value)))
     if range_values.size == 0:
@@ -270,6 +345,13 @@ def _axis_range_array(values: np.ndarray, trend_line: LineSpec | None, *, axis: 
         minimum = min(minimum, value)
         maximum = max(maximum, value)
     return _padded_range_from_bounds(minimum, maximum, default=(0.0, 1.0), pad_ratio=0.06)
+
+
+def _is_finite_number(value: Any) -> bool:
+    try:
+        return value is not None and math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
 
 
 def _padded_range_from_bounds(

@@ -38,12 +38,43 @@ def render_scatter_matplotlib(payload: ScatterPayload) -> RenderResult:
             edgecolors=payload.edgecolors,
             rasterized=payload.rasterized,
         )
-        if payload.include_trend and x.size > 1:
-            slope, intercept = np.polyfit(x, y, 1)
-            xx = np.linspace(float(np.min(x)), float(np.max(x)), 2)
-            ax.plot(xx, slope * xx + intercept, color="tab:orange", linewidth=1.25)
+        if resolved.trend_line is not None:
+            line = resolved.trend_line
+            ax.plot(
+                [line.x0, line.x1],
+                [line.y0, line.y1],
+                color=line.stroke,
+                linewidth=1.1,
+                alpha=0.35,
+                linestyle="--",
+                label=line.label,
+            )
+
+    for line in resolved.reference_lines:
+        ax.hlines(
+            line.y0,
+            line.x0,
+            line.x1,
+            color=line.stroke,
+            linewidth=line.stroke_width,
+            linestyle="--",
+            label=line.label,
+            zorder=3,
+        )
+        ax.annotate(
+            f"{line.label}={line.y0:.4g}",
+            xy=(line.x1, line.y0),
+            xytext=(-4, 0),
+            textcoords="offset points",
+            va="center",
+            ha="right",
+            fontsize=8,
+            color=line.stroke,
+        )
 
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     apply_resolved_layout(fig, ax, resolved)
+    if resolved.trend_line is not None or resolved.reference_lines:
+        ax.legend(loc="best")
     return RenderResult(fig=fig, ax=ax, metadata={"kind": "scatter", "mode": payload.mode})

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import json
+from dataclasses import replace
 
 import matplotlib
 import numpy as np
@@ -33,7 +34,7 @@ from hexafe_plotstats import (
     set_theme,
     translate,
 )
-from hexafe_plotstats.models import ChartRenderResult, HistogramConfig, ScatterConfig, TableRow, ViolinConfig
+from hexafe_plotstats.models import ChartRenderResult, HistogramConfig, IQRConfig, ScatterConfig, TableRow, ViolinConfig
 from hexafe_plotstats.specs import (
     histogram_payload_to_resolved_spec,
     iqr_payload_to_resolved_spec,
@@ -349,6 +350,22 @@ def test_violin_sigma_policy_resolves_to_explicit_lines_and_extrema_markers() ->
     assert "maximum" in marker_kinds
 
 
+def test_iqr_sigma_policy_resolves_annotations_and_axis_labels() -> None:
+    payload = build_iqr_payload(
+        {"Line A": [1, 2, 3, 4, 5]},
+        config=IQRConfig(sigma_policy="both_3_sigma"),
+    )
+    payload = replace(payload, metadata={**payload.metadata, "axis_labels": {"x": "Groups", "y": "Diameter"}})
+
+    mapping = to_mapping(iqr_payload_to_resolved_spec(payload))
+
+    sigma_lines = [line for line in mapping["spec_lines"] if str(line["kind"]).startswith("sigma_")]
+    marker_kinds = {marker["kind"] for marker in mapping["annotation_markers"]}
+    assert {axis["orientation"]: axis["label"] for axis in mapping["axes"]} == {"x": "Groups", "y": "Diameter"}
+    assert [line["kind"] for line in sigma_lines] == ["sigma_lower", "sigma_upper"]
+    assert {"mean", "minimum", "maximum"}.issubset(marker_kinds)
+
+
 def test_theme_tick_and_locale_api_resolve_into_specs() -> None:
     original_theme = get_theme()
     original_locale = get_locale()
@@ -476,8 +493,23 @@ def test_histogram_plotly_spec_can_normalize_dashboard_frequency() -> None:
     assert spec["metadata"]["histogram_y_mode"] == "relative_percent"
     assert spec["layout"]["yaxis"]["title"]["text"] == "Frequency (%)"
     assert spec["layout"]["yaxis"]["tickformat"] == ".0%"
+    assert spec["layout"]["yaxis"]["range"][1] <= 1.0
     assert sum(bar_trace["y"]) == pytest.approx(1.0)
     assert "frequency=%{customdata[3]:.2%}" in bar_trace["hovertemplate"]
+
+
+def test_histogram_plotly_relative_frequency_uses_counts_for_density_payloads() -> None:
+    payload = build_histogram_payload(
+        [1, 1, 1, 2, 3],
+        config=HistogramConfig(bins=3, density=True, include_fit=False),
+        metadata={"histogram_y_mode": "relative_percent"},
+    )
+
+    spec = histogram_payload_to_plotly_spec(payload, static=False)
+    bar_trace = next(trace for trace in spec["data"] if trace["type"] == "bar")
+
+    assert max(bar_trace["y"]) == pytest.approx(0.6)
+    assert spec["layout"]["yaxis"]["range"][1] < 0.8
 
 
 def test_scatter_payload_resolves_to_pure_chart_spec_mapping_with_trend() -> None:
@@ -505,13 +537,25 @@ def test_scatter_plotly_spec_renders_subtle_trend_when_enabled() -> None:
         [1, 2, 3, 4],
         [2, 4, 6, 8],
         ScatterConfig(include_trend=True),
+        metadata={
+            "x_label": "Datetime",
+            "y_label": "Diameter",
+            "reference_lines": [
+                {"label": "LSL", "kind": "lsl", "value": 1.5},
+                {"label": "USL", "kind": "usl", "value": 8.5},
+            ],
+        },
     )
 
     spec = scatter_payload_to_plotly_spec(payload)
     trend_trace = next(trace for trace in spec["data"] if trace.get("meta", {}).get("kind") == "trend")
+    reference_names = {trace.get("name") for trace in spec["data"] if str(trace.get("meta", {}).get("kind", "")).startswith("reference_")}
 
     assert trend_trace["line"]["width"] <= 1.1
     assert trend_trace["opacity"] <= 0.35
+    assert spec["layout"]["xaxis"]["title"]["text"] == "Datetime"
+    assert spec["layout"]["yaxis"]["title"]["text"] == "Diameter"
+    assert {"LSL", "USL"}.issubset(reference_names)
 
 
 def test_hexbin_scatter_resolves_explicit_cells() -> None:

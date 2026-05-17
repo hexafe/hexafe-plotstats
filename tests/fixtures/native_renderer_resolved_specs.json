@@ -1068,9 +1068,95 @@
       "warnings": []
     },
     "iqr_outliers": {
+      "annotation_markers": [
+        {
+          "coordinate_space": "data",
+          "fill": "#111827",
+          "kind": "mean",
+          "label": "A mean",
+          "metadata": {
+            "group": "A"
+          },
+          "opacity": 1.0,
+          "size": 5.0,
+          "stroke": "#111827",
+          "x": 1.0,
+          "y": 1.92
+        },
+        {
+          "coordinate_space": "data",
+          "fill": "#6b7280",
+          "kind": "minimum",
+          "label": "A minimum",
+          "metadata": {
+            "group": "A"
+          },
+          "opacity": 1.0,
+          "size": 4.0,
+          "stroke": "#6b7280",
+          "x": 1.0,
+          "y": 1.0
+        },
+        {
+          "coordinate_space": "data",
+          "fill": "#6b7280",
+          "kind": "maximum",
+          "label": "A maximum",
+          "metadata": {
+            "group": "A"
+          },
+          "opacity": 1.0,
+          "size": 4.0,
+          "stroke": "#6b7280",
+          "x": 1.0,
+          "y": 5.0
+        },
+        {
+          "coordinate_space": "data",
+          "fill": "#111827",
+          "kind": "mean",
+          "label": "B mean",
+          "metadata": {
+            "group": "B"
+          },
+          "opacity": 1.0,
+          "size": 5.0,
+          "stroke": "#111827",
+          "x": 2.0,
+          "y": 2.2
+        },
+        {
+          "coordinate_space": "data",
+          "fill": "#6b7280",
+          "kind": "minimum",
+          "label": "B minimum",
+          "metadata": {
+            "group": "B"
+          },
+          "opacity": 1.0,
+          "size": 4.0,
+          "stroke": "#6b7280",
+          "x": 2.0,
+          "y": 2.0
+        },
+        {
+          "coordinate_space": "data",
+          "fill": "#6b7280",
+          "kind": "maximum",
+          "label": "B maximum",
+          "metadata": {
+            "group": "B"
+          },
+          "opacity": 1.0,
+          "size": 4.0,
+          "stroke": "#6b7280",
+          "x": 2.0,
+          "y": 2.4
+        }
+      ],
       "axes": [
         {
-          "label": "group",
+          "label": "Groups",
           "maximum": 2.5,
           "metadata": {
             "ticks_count": 2
@@ -1088,7 +1174,7 @@
           ]
         },
         {
-          "label": "value",
+          "label": "Measurement",
           "maximum": 5.36,
           "metadata": {
             "ticks_count": 6
@@ -1124,7 +1210,9 @@
             "count": 5,
             "index": 0,
             "iqr": 0.2,
+            "maximum": 5.0,
             "mean": 1.92,
+            "minimum": 1.0,
             "outlier_count": 1,
             "std": 1.7253985
           },
@@ -1147,7 +1235,9 @@
             "count": 5,
             "index": 1,
             "iqr": 0.2,
+            "maximum": 2.4,
             "mean": 2.2,
+            "minimum": 2.0,
             "outlier_count": 0,
             "std": 0.15811388
           },
@@ -1169,9 +1259,16 @@
       },
       "chart_type": "iqr",
       "metadata": {
+        "axis_labels": {
+          "x": "Groups",
+          "y": "Measurement"
+        },
         "group_count": 2,
         "payload_metadata": {
+          "show_extrema": true,
+          "show_mean": true,
           "showfliers": true,
+          "sigma_policy": "none",
           "whis": 1.0
         },
         "spec_limits": {
@@ -1288,7 +1385,7 @@
     "scatter_trend": {
       "axes": [
         {
-          "label": "x",
+          "label": "Samples",
           "maximum": 4.24,
           "metadata": {
             "ticks_count": 6
@@ -1314,7 +1411,7 @@
           ]
         },
         {
-          "label": "y",
+          "label": "Measurement",
           "maximum": 5.3272,
           "metadata": {
             "ticks_count": 6
@@ -1474,6 +1571,7 @@
         "x": 72.0,
         "y": 62.0
       },
+      "reference_lines": [],
       "schema_version": 1,
       "title": {
         "align": "left",
@@ -1759,7 +1857,7 @@
       ],
       "axes": [
         {
-          "label": "group",
+          "label": "Groups",
           "maximum": 3.5,
           "metadata": {
             "ticks_count": 3
@@ -1779,7 +1877,7 @@
           ]
         },
         {
-          "label": "value",
+          "label": "Measurement",
           "maximum": 5.17356168,
           "metadata": {
             "ticks_count": 6
@@ -4306,6 +4404,10 @@
         }
       ],
       "metadata": {
+        "axis_labels": {
+          "x": "Groups",
+          "y": "Measurement"
+        },
         "group_count": 3,
         "payload_metadata": {
           "show_extrema": true,

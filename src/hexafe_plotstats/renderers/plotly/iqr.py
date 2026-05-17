@@ -23,7 +23,8 @@ def iqr_payload_to_plotly_spec(payload: IQRPayload, *, static: bool = True) -> d
     traces: list[dict[str, Any]] = []
     if resolved["boxes"]:
         traces.append(_box_trace(resolved["boxes"]))
-        traces.append(_mean_trace(resolved["boxes"]))
+    if resolved["annotation_markers"]:
+        traces.extend(_annotation_marker_traces(resolved["annotation_markers"]))
     if resolved["outlier_markers"]:
         traces.append(_outlier_trace(resolved["outlier_markers"]))
     traces.extend(line_trace(line) for line in resolved["spec_lines"])
@@ -83,19 +84,28 @@ def _box_trace(boxes: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _mean_trace(boxes: list[dict[str, Any]]) -> dict[str, Any]:
-    mean_boxes = [box for box in boxes if box.get("metadata", {}).get("mean") is not None]
+def _annotation_marker_traces(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for marker in markers:
+        grouped.setdefault(str(marker.get("kind") or "marker"), []).append(marker)
+    return [_annotation_marker_trace(kind, values) for kind, values in grouped.items()]
+
+
+def _annotation_marker_trace(kind: str, markers: list[dict[str, Any]]) -> dict[str, Any]:
+    label = {"mean": "Mean", "minimum": "Minimum", "maximum": "Maximum"}.get(kind, kind.title())
+    symbol = "diamond" if kind == "mean" else "line-ew"
+    color = markers[0].get("fill") or markers[0].get("stroke") or "#111827"
     return {
         "type": "scatter",
         "mode": "markers",
-        "name": "Mean",
-        "legendgroup": "iqr_mean",
-        "x": [box["position"] for box in mean_boxes],
-        "y": [box["metadata"]["mean"] for box in mean_boxes],
-        "marker": {"symbol": "diamond", "size": 7, "color": "#111827"},
-        "customdata": [[box["label"], box["metadata"].get("count")] for box in mean_boxes],
-        "hovertemplate": "group=%{customdata[0]}<br>mean=%{y}<br>n=%{customdata[1]}<extra></extra>",
-        "meta": {"data_policy": "resolved_box_mean", "contains_raw_points": False},
+        "name": label,
+        "legendgroup": f"iqr_{kind}",
+        "x": [marker["x"] for marker in markers],
+        "y": [marker["y"] for marker in markers],
+        "marker": {"symbol": symbol, "size": [marker.get("size") or 5.0 for marker in markers], "color": color},
+        "customdata": [[marker.get("metadata", {}).get("group"), kind] for marker in markers],
+        "hovertemplate": "group=%{customdata[0]}<br>%{customdata[1]}=%{y}<extra></extra>",
+        "meta": {"data_policy": f"resolved_box_{kind}", "contains_raw_points": False, "kind": kind},
     }
 
 

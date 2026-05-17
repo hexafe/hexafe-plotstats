@@ -33,13 +33,14 @@ def violin_payload_to_resolved_spec(
     markers = _annotation_markers(groups, show_extrema=bool(payload.metadata.get("show_extrema")))
     sigma_lines = _sigma_lines(payload, groups)
     y_min, y_max = _y_range(payload, groups, sigma_lines)
+    axis_labels = _axis_labels(payload)
 
     ticks_count = _tick_count(payload.metadata, sample_count=sum(int(group.metadata.get("count") or 0) for group in groups))
     y_ticks = _ticks(y_min, y_max, ticks_count)
     axes = (
         AxisSpec(
             orientation="x",
-            label="group",
+            label=axis_labels["x"],
             minimum=0.5,
             maximum=max(len(groups) + 0.5, 1.5),
             tick_values=tuple(group.position for group in groups),
@@ -49,7 +50,7 @@ def violin_payload_to_resolved_spec(
         ),
         AxisSpec(
             orientation="y",
-            label="value",
+            label=axis_labels["y"],
             minimum=y_min,
             maximum=y_max,
             tick_values=y_ticks,
@@ -61,7 +62,15 @@ def violin_payload_to_resolved_spec(
     return ResolvedViolinSpec(
         chart_type="violin",
         canvas=canvas,
-        title=TextSpec(text="Violin", x=36.0, y=28.0, font_size=18.0, fill=str(colors.get("text") or "#111827"), weight="600", role="title"),
+        title=TextSpec(
+            text=str(payload.metadata.get("title") or "Violin"),
+            x=36.0,
+            y=28.0,
+            font_size=18.0,
+            fill=str(colors.get("text") or "#111827"),
+            weight="600",
+            role="title",
+        ),
         plot_rect=plot_rect,
         axes=axes,
         groups=groups,
@@ -71,6 +80,7 @@ def violin_payload_to_resolved_spec(
             "group_count": len(groups),
             "spec_limits": _spec_limit_metadata(payload),
             "payload_metadata": dict(payload.metadata),
+            "axis_labels": axis_labels,
             "theme": theme,
         },
     )
@@ -290,4 +300,17 @@ def _spec_limit_metadata(payload: ViolinPayload) -> dict[str, float | None]:
         "lsl": payload.spec_limits.lsl,
         "nominal": payload.spec_limits.nominal,
         "usl": payload.spec_limits.usl,
+    }
+
+
+def _axis_labels(payload: ViolinPayload) -> dict[str, str]:
+    axis_labels = payload.metadata.get("axis_labels")
+    if isinstance(axis_labels, dict):
+        return {
+            "x": str(axis_labels.get("x") or "Groups"),
+            "y": str(axis_labels.get("y") or "Measurement"),
+        }
+    return {
+        "x": str(payload.metadata.get("x_label") or "Groups"),
+        "y": str(payload.metadata.get("y_label") or "Measurement"),
     }

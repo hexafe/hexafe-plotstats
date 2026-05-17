@@ -76,6 +76,9 @@ class ViolinConfig:
 class IQRConfig:
     whis: float = 1.5
     showfliers: bool = True
+    show_mean: bool = True
+    show_extrema: bool = True
+    sigma_policy: Literal["none", "plus_3_sigma", "both_3_sigma"] = "none"
 
 
 @dataclass(frozen=True)
@@ -89,4 +92,3 @@ class ScatterConfig:
     edgecolors: str = "none"
     gridsize: int = 60
     include_trend: bool = False
-

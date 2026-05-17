@@ -10,7 +10,7 @@ from ...models.payloads import ScatterPayload
 from ...models.render import RenderResult
 from ...specs import scatter_payload_to_resolved_spec, to_mapping
 from ..base import RendererBackendUnavailable
-from ._common import plotly_config
+from ._common import line_trace, plotly_config, resolved_layout
 
 _LARGE_PLOTLY_SCATTER_THRESHOLD = 50_000
 _STATIC_RASTER_BINS = 192
@@ -45,8 +45,8 @@ def render_scatter_plotly(
 
 
 def _large_scatter_plotly_spec(payload: ScatterPayload, *, target_interactive_points: int) -> dict[str, Any]:
+    resolved = to_mapping(scatter_payload_to_resolved_spec(payload))
     if payload.mode == "hexbin":
-        resolved = to_mapping(scatter_payload_to_resolved_spec(payload))
         aggregate_trace = _hexbin_trace(resolved)
         raw_trace = _raw_static_raster_trace(
             payload,
@@ -82,23 +82,22 @@ def _large_scatter_plotly_spec(payload: ScatterPayload, *, target_interactive_po
         }
 
     data = [raw_trace, aggregate_trace]
-    trend_trace = _trend_trace(payload)
+    trend_trace = _trend_trace_from_resolved(resolved)
     if trend_trace is not None:
         data.append(trend_trace)
+    data.extend(_reference_line_traces(resolved))
+    layout = resolved_layout(resolved, metadata)
 
     return {
         "data": data,
-        "layout": {
-            "hovermode": "closest",
-            "legend": {"groupclick": "toggleitem"},
-            "meta": metadata,
-        },
+        "layout": layout,
         "config": plotly_config(static=False),
         "metadata": metadata,
     }
 
 
 def _raw_scatter_plotly_spec(payload: ScatterPayload) -> dict[str, Any]:
+    resolved = to_mapping(scatter_payload_to_resolved_spec(payload))
     metadata = {
         "mode": payload.mode,
         "data_policy": "full",
@@ -118,21 +117,19 @@ def _raw_scatter_plotly_spec(payload: ScatterPayload) -> dict[str, Any]:
             "hovertemplate": "x=%{x}<br>y=%{y}<extra></extra>",
         }
     ]
-    trend_trace = _trend_trace(payload)
+    trend_trace = _trend_trace_from_resolved(resolved)
     if trend_trace is not None:
         data.append(trend_trace)
+    data.extend(_reference_line_traces(resolved))
     return {
         "data": data,
-        "layout": {"hovermode": "closest", "meta": metadata},
+        "layout": resolved_layout(resolved, metadata),
         "config": plotly_config(static=False),
         "metadata": metadata,
     }
 
 
-def _trend_trace(payload: ScatterPayload) -> dict[str, Any] | None:
-    if not payload.include_trend:
-        return None
-    resolved = to_mapping(scatter_payload_to_resolved_spec(payload))
+def _trend_trace_from_resolved(resolved: dict[str, Any]) -> dict[str, Any] | None:
     line = resolved.get("trend_line")
     if not isinstance(line, dict):
         return None
@@ -148,6 +145,10 @@ def _trend_trace(payload: ScatterPayload) -> dict[str, Any] | None:
         "hovertemplate": "Trend<extra></extra>",
         "meta": {"kind": "trend", "data_policy": "least_squares"},
     }
+
+
+def _reference_line_traces(resolved: dict[str, Any]) -> list[dict[str, Any]]:
+    return [line_trace(line) for line in resolved.get("reference_lines") or () if isinstance(line, dict)]
 
 
 def _hexbin_trace(resolved: dict[str, Any]) -> dict[str, Any]:

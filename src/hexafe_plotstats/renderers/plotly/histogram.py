@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import math
 from typing import Any
+
+import numpy as np
 
 from ...models.payloads import HistogramPayload
 from ...models.render import RenderResult
@@ -25,8 +28,9 @@ def histogram_payload_to_plotly_spec(payload: HistogramPayload, *, static: bool 
     }
     traces: list[dict[str, Any]] = []
     if resolved["bars"]:
-        traces.append(_bar_trace(resolved["bars"], density=payload.density, y_mode=y_mode))
-    traces.extend(_curve_trace(curve) for curve in resolved["curves"])
+        traces.append(_bar_trace(resolved["bars"], payload=payload, density=payload.density, y_mode=y_mode))
+    curve_scale = _relative_curve_scale(payload) if y_mode == "relative_percent" else 1.0
+    traces.extend(_curve_trace(curve, y_scale=curve_scale) for curve in resolved["curves"])
     traces.extend(line_trace(line) for line in resolved["spec_lines"])
     if resolved.get("mean_line") is not None:
         traces.append(line_trace(resolved["mean_line"]))
@@ -35,7 +39,12 @@ def histogram_payload_to_plotly_spec(payload: HistogramPayload, *, static: bool 
 
     layout = resolved_layout(resolved, metadata)
     if y_mode == "relative_percent":
-        layout["yaxis"] = {**layout["yaxis"], "title": {"text": "Frequency (%)"}, "tickformat": ".0%"}
+        layout["yaxis"] = {
+            **layout["yaxis"],
+            "title": {"text": "Frequency (%)"},
+            "tickformat": ".0%",
+            "range": [0.0, _relative_y_axis_top(traces)],
+        }
     if static and resolved.get("table") is not None:
         layout["xaxis"] = {**layout["xaxis"], "domain": [0.0, 0.72]}
     layout["barmode"] = "overlay"
@@ -60,12 +69,23 @@ def _histogram_y_mode(payload: HistogramPayload) -> str:
     return "density" if payload.density else "count"
 
 
-def _bar_trace(bars: list[dict[str, Any]], *, density: bool, y_mode: str) -> dict[str, Any]:
+def _bar_trace(
+    bars: list[dict[str, Any]],
+    *,
+    payload: HistogramPayload,
+    density: bool,
+    y_mode: str,
+) -> dict[str, Any]:
     raw_values = [float(bar["y1"]) for bar in bars]
-    total = sum(raw_values)
+    if y_mode == "relative_percent":
+        counts = _histogram_bin_counts(payload, bars) or raw_values
+        total = sum(counts)
+    else:
+        counts = raw_values
+        total = 0.0
     if y_mode == "relative_percent" and total > 0.0:
-        y_values = [value / total for value in raw_values]
-        customdata = [[bar["x0"], bar["x1"], raw, value] for bar, raw, value in zip(bars, raw_values, y_values, strict=False)]
+        y_values = [value / total for value in counts]
+        customdata = [[bar["x0"], bar["x1"], count, value] for bar, count, value in zip(bars, counts, y_values, strict=False)]
         hovertemplate = (
             "bin=%{customdata[0]}..%{customdata[1]}<br>"
             "frequency=%{customdata[3]:.2%}<br>"
@@ -95,14 +115,60 @@ def _bar_trace(bars: list[dict[str, Any]], *, density: bool, y_mode: str) -> dic
     }
 
 
-def _curve_trace(curve: dict[str, Any]) -> dict[str, Any]:
+def _histogram_bin_counts(payload: HistogramPayload, bars: list[dict[str, Any]]) -> list[float]:
+    try:
+        values = np.asarray(payload.values, dtype=float).reshape(-1)
+        edges = np.asarray(payload.bin_edges, dtype=float).reshape(-1)
+    except (TypeError, ValueError):
+        return []
+    values = values[np.isfinite(values)]
+    edges = edges[np.isfinite(edges)]
+    if values.size == 0 or edges.size < 2:
+        return []
+    try:
+        counts, _ = np.histogram(values, bins=edges)
+    except ValueError:
+        return []
+    if len(counts) != len(bars):
+        return []
+    return [float(value) for value in counts]
+
+
+def _relative_curve_scale(payload: HistogramPayload) -> float:
+    count = payload.summary.count or len(payload.values)
+    try:
+        number = float(count)
+    except (TypeError, ValueError):
+        return 1.0
+    return 1.0 / number if math.isfinite(number) and number > 0.0 else 1.0
+
+
+def _relative_y_axis_top(traces: list[dict[str, Any]]) -> float:
+    values: list[float] = []
+    for trace in traces:
+        if trace.get("type") != "bar" and trace.get("meta", {}).get("data_policy") != "resolved_curve":
+            continue
+        for value in trace.get("y") or ():
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(number) and number >= 0.0:
+                values.append(number)
+    if not values:
+        return 1.0
+    return min(max(max(values) * 1.16, 0.05), 1.0)
+
+
+def _curve_trace(curve: dict[str, Any], *, y_scale: float = 1.0) -> dict[str, Any]:
+    y_values = [float(value) * y_scale for value in curve["y"]]
     trace = {
         "type": "scatter",
         "mode": "lines",
         "name": curve["label"],
         "legendgroup": curve.get("kind") or curve["label"],
         "x": list(curve["x"]),
-        "y": list(curve["y"]),
+        "y": y_values,
         "line": {
             "color": curve.get("stroke") or "#f97316",
             "width": curve.get("stroke_width") or 1.5,

@@ -226,6 +226,7 @@ class ResolvedHistogramSpec(ResolvedChartSpec):
 class ResolvedIQRSpec(ResolvedChartSpec):
     boxes: tuple[BoxPlotSpec, ...] = ()
     outlier_markers: tuple[MarkerSpec, ...] = ()
+    annotation_markers: tuple[MarkerSpec, ...] = ()
     spec_lines: tuple[LineSpec, ...] = ()
 
 
@@ -235,6 +236,7 @@ class ResolvedScatterSpec(ResolvedChartSpec):
     marker_batches: tuple[MarkerBatchSpec, ...] = ()
     hex_cells: tuple[HexCellSpec, ...] = ()
     trend_line: LineSpec | None = None
+    reference_lines: tuple[LineSpec, ...] = ()
 
 
 @dataclass(frozen=True)

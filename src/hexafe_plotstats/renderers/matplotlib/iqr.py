@@ -33,9 +33,48 @@ def render_iqr_matplotlib(payload: IQRPayload) -> RenderResult:
         for line in bp["medians"]:
             line.set_color("tab:orange")
 
+        for marker in resolved.annotation_markers:
+            color = marker.fill or marker.stroke or "black"
+            symbol = "D" if marker.kind == "mean" else "_"
+            ax.scatter([marker.x], [marker.y], color=color, marker=symbol, s=max(marker.size * 8.0, 16.0), zorder=3)
+            if marker.kind in {"mean", "minimum", "maximum"}:
+                label = {"minimum": "min", "maximum": "max"}.get(marker.kind, marker.kind)
+                _annotate_value(ax, marker.x, marker.y, label, color)
+
+        for line in resolved.spec_lines:
+            if line.kind.startswith("sigma_"):
+                ax.hlines(line.y0, line.x0, line.x1, color=line.stroke, linewidth=line.stroke_width, linestyle="--", zorder=3)
+                _annotate_value(ax, line.x1, line.y0, line.label, line.stroke, x_offset=5)
+
     style_spec_limits_y(ax, payload.spec_limits)
     ax.set_xticks(positions, [group.label for group in payload.groups])
     ax.set_xlabel("group")
     ax.set_ylabel("value")
     apply_resolved_layout(fig, ax, resolved)
     return RenderResult(fig=fig, ax=ax, metadata={"kind": "iqr", "metadata": payload.metadata})
+
+
+def _annotate_value(ax, x_value: float, y_value: float | None, label: str, color: str, *, x_offset: int = 4) -> None:
+    if y_value is None:
+        return
+    try:
+        number = float(y_value)
+    except (TypeError, ValueError):
+        return
+    if not np.isfinite(number):
+        return
+    ax.annotate(
+        f"{label}={_format_annotation_number(number)}",
+        xy=(x_value, number),
+        xytext=(x_offset, 0),
+        textcoords="offset points",
+        va="center",
+        ha="left",
+        fontsize=8,
+        color=color,
+        zorder=4,
+    )
+
+
+def _format_annotation_number(value: float) -> str:
+    return f"{value:.4g}"

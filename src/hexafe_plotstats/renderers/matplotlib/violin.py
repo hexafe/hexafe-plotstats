@@ -31,6 +31,7 @@ def render_violin_matplotlib(payload: ViolinPayload) -> RenderResult:
         for position, group in zip(positions, payload.groups):
             if show_mean and group.summary.mean is not None:
                 ax.scatter([position], [group.summary.mean], color="black", s=12, zorder=3)
+                _annotate_value(ax, position, group.summary.mean, "mean", "black")
             if show_quartiles:
                 if group.summary.q1 is not None:
                     ax.hlines(group.summary.q1, position - 0.12, position + 0.12, color="tab:orange", linewidth=1.2, zorder=3)
@@ -42,10 +43,13 @@ def render_violin_matplotlib(payload: ViolinPayload) -> RenderResult:
                 ax.vlines(position, group.summary.minimum, group.summary.maximum, color="tab:gray", linewidth=1, alpha=0.8)
                 ax.scatter([position], [group.summary.minimum], color="tab:gray", marker="_", s=42, zorder=3)
                 ax.scatter([position], [group.summary.maximum], color="tab:gray", marker="_", s=42, zorder=3)
+                _annotate_value(ax, position, group.summary.minimum, "min", "tab:gray")
+                _annotate_value(ax, position, group.summary.maximum, "max", "tab:gray")
 
         for line in resolved.spec_lines:
             if line.kind.startswith("sigma_"):
                 ax.hlines(line.y0, line.x0, line.x1, color=line.stroke, linewidth=line.stroke_width, linestyle="--", zorder=3)
+                _annotate_value(ax, line.x1, line.y0, line.label, line.stroke, x_offset=5)
 
     style_spec_limits_y(ax, payload.spec_limits)
     ax.set_xticks(positions, [group.label for group in payload.groups])
@@ -53,3 +57,29 @@ def render_violin_matplotlib(payload: ViolinPayload) -> RenderResult:
     ax.set_ylabel("value")
     apply_resolved_layout(fig, ax, resolved)
     return RenderResult(fig=fig, ax=ax, metadata={"kind": "violin", "metadata": payload.metadata})
+
+
+def _annotate_value(ax, x_value: float, y_value: float | None, label: str, color: str, *, x_offset: int = 4) -> None:
+    if y_value is None:
+        return
+    try:
+        number = float(y_value)
+    except (TypeError, ValueError):
+        return
+    if not np.isfinite(number):
+        return
+    ax.annotate(
+        f"{label}={_format_annotation_number(number)}",
+        xy=(x_value, number),
+        xytext=(x_offset, 0),
+        textcoords="offset points",
+        va="center",
+        ha="left",
+        fontsize=8,
+        color=color,
+        zorder=4,
+    )
+
+
+def _format_annotation_number(value: float) -> str:
+    return f"{value:.4g}"

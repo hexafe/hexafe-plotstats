@@ -157,7 +157,7 @@ def test_metroliza_native_histogram_payload_adapter_preserves_enriched_metadata(
     assert payload.density is False
     assert len(payload.bin_values) == 4
     assert mapping["title"]["text"] == "Diameter"
-    assert mapping["axes"][0]["label"] == "Measurement"
+    assert mapping["axes"][0]["label"] == "Measurement bins"
     assert mapping["axes"][1]["label"] == "Count"
     assert mapping["axes"][0]["minimum"] == 0.0
     assert mapping["axes"][0]["maximum"] == 5.0
@@ -306,6 +306,8 @@ def test_metroliza_chart_artifact_builds_trend_and_trace_payload_specs() -> None
             "y_values": [10.0, 10.1, 10.2],
             "horizontal_limits": [9.5, 10.5],
             "limits": {"lsl": 9.5, "usl": 10.5},
+            "x_label": "Datetime",
+            "y_label": "Diameter",
         },
         target="html_dashboard",
         include_plotly=True,
@@ -321,11 +323,14 @@ def test_metroliza_chart_artifact_builds_trend_and_trace_payload_specs() -> None
     )
 
     assert trend_artifact["plotly_spec"]["metadata"]["kind"] == "scatter"
-    assert trend_artifact["plotly_spec"]["layout"]["shapes"]
-    assert any(
-        annotation.get("text", "").startswith("LSL=")
-        for annotation in trend_artifact["plotly_spec"]["layout"]["annotations"]
-    )
+    assert trend_artifact["plotly_spec"]["layout"]["xaxis"]["title"]["text"] == "Datetime"
+    assert trend_artifact["plotly_spec"]["layout"]["yaxis"]["title"]["text"] == "Diameter"
+    reference_names = {
+        trace.get("name")
+        for trace in trend_artifact["plotly_spec"]["data"]
+        if str(trace.get("meta", {}).get("kind", "")).startswith("reference_")
+    }
+    assert {"LSL", "USL", "Mean"}.issubset(reference_names)
     assert any(
         trace.get("meta", {}).get("kind") == "trend" and trace["opacity"] <= 0.35
         for trace in trend_artifact["plotly_spec"]["data"]
