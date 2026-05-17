@@ -114,7 +114,7 @@ def _raw_scatter_plotly_spec(payload: ScatterPayload) -> dict[str, Any]:
             "x": list(payload.x),
             "y": list(payload.y),
             "marker": {"size": payload.marker_size, "opacity": payload.alpha},
-            "hovertemplate": "x=%{x}<br>y=%{y}<extra></extra>",
+            **_raw_scatter_hover_fields(payload),
         }
     ]
     trend_trace = _trend_trace_from_resolved(resolved)
@@ -127,6 +127,25 @@ def _raw_scatter_plotly_spec(payload: ScatterPayload) -> dict[str, Any]:
         "config": plotly_config(static=False),
         "metadata": metadata,
     }
+
+
+def _raw_scatter_hover_fields(payload: ScatterPayload) -> dict[str, Any]:
+    labels = _x_display_labels(payload)
+    if labels is None:
+        return {"hovertemplate": "x=%{x}<br>y=%{y}<extra></extra>"}
+    return {
+        "customdata": [[label] for label in labels],
+        "hovertemplate": "sample=%{customdata[0]}<br>x=%{x}<br>y=%{y}<extra></extra>",
+        "meta": {"x_display_label_source": "x_display_labels"},
+    }
+
+
+def _x_display_labels(payload: ScatterPayload) -> tuple[str, ...] | None:
+    raw_labels = payload.metadata.get("x_display_labels")
+    if isinstance(raw_labels, (str, bytes)) or not isinstance(raw_labels, (list, tuple)):
+        return None
+    labels = tuple(str(label) for label in raw_labels)
+    return labels if len(labels) == len(payload.x) else None
 
 
 def _trend_trace_from_resolved(resolved: dict[str, Any]) -> dict[str, Any] | None:

@@ -512,6 +512,24 @@ def test_histogram_plotly_relative_frequency_uses_counts_for_density_payloads() 
     assert spec["layout"]["yaxis"]["range"][1] < 0.8
 
 
+def test_histogram_plotly_relative_frequency_scales_curves_by_bin_width() -> None:
+    payload = build_histogram_payload(
+        [0.0, 2.0, 4.0, 6.0, 8.0, 10.0],
+        config=HistogramConfig(bins=5, density=False),
+        metadata={"histogram_y_mode": "relative_percent"},
+    )
+
+    resolved = to_mapping(histogram_payload_to_resolved_spec(payload))
+    spec = histogram_payload_to_plotly_spec(payload, static=False)
+    resolved_curve = next(curve for curve in resolved["curves"] if curve["kind"] in {"fit", "kde"})
+    plotly_curve = next(trace for trace in spec["data"] if trace.get("meta", {}).get("data_policy") == "resolved_curve")
+    representative_width = float(np.median(np.diff(np.asarray(payload.bin_edges, dtype=float))))
+
+    assert representative_width > 1.0
+    assert plotly_curve["y"][8] == pytest.approx(resolved_curve["y"][8] * representative_width)
+    assert plotly_curve["y"][8] != pytest.approx(resolved_curve["y"][8] / payload.summary.count)
+
+
 def test_histogram_matplotlib_relative_frequency_scales_bar_heights() -> None:
     payload = build_histogram_payload(
         [1, 1, 1, 2, 3],

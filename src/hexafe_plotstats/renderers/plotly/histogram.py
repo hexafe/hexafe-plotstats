@@ -135,12 +135,19 @@ def _histogram_bin_counts(payload: HistogramPayload, bars: list[dict[str, Any]])
 
 
 def _relative_curve_scale(payload: HistogramPayload) -> float:
-    count = payload.summary.count or len(payload.values)
     try:
-        number = float(count)
+        edges = np.asarray(payload.bin_edges, dtype=float).reshape(-1)
     except (TypeError, ValueError):
         return 1.0
-    return 1.0 / number if math.isfinite(number) and number > 0.0 else 1.0
+    edges = edges[np.isfinite(edges)]
+    if edges.size < 2:
+        return 1.0
+    widths = np.diff(edges)
+    positive_widths = widths[np.isfinite(widths) & (widths > 0.0)]
+    if positive_widths.size == 0:
+        return 1.0
+    width = float(np.median(positive_widths))
+    return width if math.isfinite(width) and width > 0.0 else 1.0
 
 
 def _relative_y_axis_top(traces: list[dict[str, Any]]) -> float:

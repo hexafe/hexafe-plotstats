@@ -292,6 +292,35 @@ def test_metroliza_scatter_adapter_prefers_characteristic_title_and_sample_numbe
     assert artifact["plotly_spec"]["layout"]["yaxis"]["title"]["text"] == "Diameter"
 
 
+def test_metroliza_scatter_adapter_threads_sample_labels_to_plotly_ticks_and_hover() -> None:
+    artifact = chart_artifact_from_metroliza_payload(
+        {
+            "type": "trend",
+            "characteristic_title": "Diameter",
+            "x_values": [0.0, 1.0, 2.0],
+            "y_values": [10.1, 10.4, 10.2],
+            "labels": ["SN-001", "SN-002", "SN-003"],
+            "layout": {
+                "display_positions": [0.0, 2.0],
+                "display_labels": ["SN-001", "SN-003"],
+            },
+        },
+        target="html_dashboard",
+        include_plotly=True,
+    )
+
+    spec = artifact["plotly_spec"]
+    points = next(trace for trace in spec["data"] if trace.get("name") == "Points")
+    trend = next(trace for trace in spec["data"] if trace.get("meta", {}).get("kind") == "trend")
+
+    assert spec["layout"]["xaxis"]["tickvals"] == [0.0, 2.0]
+    assert spec["layout"]["xaxis"]["ticktext"] == ["SN-001", "SN-003"]
+    assert points["x"] == [0.0, 1.0, 2.0]
+    assert points["customdata"] == [["SN-001"], ["SN-002"], ["SN-003"]]
+    assert "sample=%{customdata[0]}" in points["hovertemplate"]
+    assert trend["x"] == [0.0, 2.0]
+
+
 def test_metroliza_chart_artifact_builds_histogram_plotly_png_and_stats() -> None:
     artifact = chart_artifact_from_metroliza_payload(
         {

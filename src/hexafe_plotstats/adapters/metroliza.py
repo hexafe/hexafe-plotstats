@@ -391,19 +391,21 @@ def _scatter_like_artifact(
             "excel_chart_data": _trace_excel_chart_data(payload),
         }
 
-    x_values = payload.get("x_values") or payload.get("x") or []
-    y_values = payload.get("y_values") or payload.get("y") or []
+    x_values = _payload_sequence(payload, "x_values", "x")
+    y_values = _payload_sequence(payload, "y_values", "y")
+    scatter_metadata = {
+        "title": _scatter_title(payload, chart_type=chart_type),
+        "theme": theme,
+        "x_label": _scatter_x_axis_label(payload, chart_type),
+        "y_label": _scatter_y_axis_label(payload),
+        "reference_lines": _scatter_reference_lines_from_payload(payload, y_values),
+    }
+    scatter_metadata.update(_scatter_display_metadata_from_payload(payload, x_values, y_values))
     scatter = build_scatter_payload(
         x_values,
         y_values,
         config=ScatterConfig(include_trend=chart_type == "trend"),
-        metadata={
-            "title": _scatter_title(payload, chart_type=chart_type),
-            "theme": theme,
-            "x_label": _scatter_x_axis_label(payload, chart_type),
-            "y_label": _scatter_y_axis_label(payload),
-            "reference_lines": _scatter_reference_lines_from_payload(payload, y_values),
-        },
+        metadata=scatter_metadata,
     )
     result: dict[str, Any] = {
         "payload_summary": {
@@ -686,6 +688,108 @@ def _trace_excel_chart_data(payload: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(trace, Mapping)
         ]
     }
+
+
+def _payload_sequence(payload: Mapping[str, Any], *keys: str) -> list[Any]:
+    for key in keys:
+        if key in payload and payload.get(key) is not None:
+            value = payload.get(key)
+            if isinstance(value, (str, bytes)):
+                return []
+            if isinstance(value, Sequence):
+                return list(value)
+            if isinstance(value, Iterable):
+                return list(value)
+    return []
+
+
+def _scatter_display_metadata_from_payload(
+    payload: Mapping[str, Any],
+    x_values: Sequence[Any],
+    y_values: Sequence[Any],
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    labels = _scatter_display_labels(payload)
+    if labels:
+        finite_labels = _finite_scatter_labels(x_values, y_values, labels)
+        if finite_labels:
+            metadata["x_display_labels"] = finite_labels
+
+    tick_values, tick_labels = _scatter_tick_labels(payload, x_values, labels)
+    if tick_values and tick_labels:
+        metadata["x_tick_values"] = tick_values
+        metadata["x_tick_labels"] = tick_labels
+    return metadata
+
+
+def _scatter_display_labels(payload: Mapping[str, Any]) -> list[str]:
+    for key in ("x_display_labels", "sample_labels", "labels"):
+        values = _optional_sequence(payload.get(key))
+        if values:
+            return [str(value) for value in values]
+    return []
+
+
+def _scatter_tick_labels(
+    payload: Mapping[str, Any],
+    x_values: Sequence[Any],
+    labels: Sequence[str],
+) -> tuple[list[float], list[str]]:
+    explicit_values = _optional_sequence(payload.get("x_tick_values"))
+    explicit_labels = _optional_sequence(payload.get("x_tick_labels"))
+    if explicit_values and explicit_labels:
+        return _coerced_tick_pairs(explicit_values, explicit_labels)
+
+    layout = _scatter_layout_metadata(payload)
+    layout_values = _optional_sequence(layout.get("display_positions"))
+    layout_labels = _optional_sequence(layout.get("display_labels"))
+    if layout_values and layout_labels:
+        return _coerced_tick_pairs(layout_values, layout_labels)
+
+    if labels and len(labels) == len(x_values):
+        return _coerced_tick_pairs(x_values, labels)
+    return [], []
+
+
+def _scatter_layout_metadata(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    for key in ("layout", "chart_layout"):
+        value = payload.get(key)
+        if isinstance(value, Mapping):
+            return value
+    return {}
+
+
+def _optional_sequence(value: Any) -> list[Any]:
+    if isinstance(value, (str, bytes)) or value is None:
+        return []
+    if isinstance(value, Sequence):
+        return list(value)
+    if isinstance(value, Iterable):
+        return list(value)
+    return []
+
+
+def _finite_scatter_labels(
+    x_values: Sequence[Any],
+    y_values: Sequence[Any],
+    labels: Sequence[str],
+) -> list[str]:
+    output: list[str] = []
+    for x_value, y_value, label in zip(x_values, y_values, labels, strict=False):
+        if _coerce_float(x_value) is not None and _coerce_float(y_value) is not None:
+            output.append(str(label))
+    return output
+
+
+def _coerced_tick_pairs(values: Sequence[Any], labels: Sequence[Any]) -> tuple[list[float], list[str]]:
+    tick_values: list[float] = []
+    tick_labels: list[str] = []
+    for value, label in zip(values, labels, strict=False):
+        number = _coerce_float(value)
+        if number is not None:
+            tick_values.append(float(number))
+            tick_labels.append(str(label))
+    return tick_values, tick_labels
 
 
 def _trace_payload_to_plotly_spec(

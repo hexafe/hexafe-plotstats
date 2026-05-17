@@ -63,7 +63,7 @@ def scatter_payload_to_resolved_spec(
         data_policy = "full" if markers else "sampled" if payload.rasterized else "full"
 
     ticks_count = _tick_count(payload.metadata, sample_count=point_count)
-    x_ticks = _ticks(x_min, x_max, ticks_count)
+    x_tick_values, x_tick_labels, x_tick_metadata = _x_axis_ticks(payload, x_values, ticks_count, x_min, x_max)
     y_ticks = _ticks(y_min, y_max, ticks_count)
     y_tick_decimals = _infer_tick_decimals(y_values)
     axis_labels = _axis_labels(payload)
@@ -73,9 +73,9 @@ def scatter_payload_to_resolved_spec(
             label=axis_labels["x"],
             minimum=x_min,
             maximum=x_max,
-            tick_values=x_ticks,
-            tick_labels=tuple(_format_number(value) for value in x_ticks),
-            metadata={"ticks_count": ticks_count},
+            tick_values=x_tick_values,
+            tick_labels=x_tick_labels,
+            metadata=x_tick_metadata,
         ),
         AxisSpec(
             orientation="y",
@@ -181,6 +181,54 @@ def _format_tick_with_decimals(value: float, *, decimals: int) -> str:
     if formatted in {"-0", "-0.0"}:
         return "0"
     return formatted
+
+
+def _x_axis_ticks(
+    payload: ScatterPayload,
+    x_values: np.ndarray,
+    ticks_count: int,
+    x_min: float,
+    x_max: float,
+) -> tuple[tuple[float, ...], tuple[str, ...], dict[str, Any]]:
+    explicit_ticks = _explicit_x_axis_ticks(payload.metadata)
+    if explicit_ticks is not None:
+        values, labels = explicit_ticks
+        return values, labels, {"ticks_count": len(values), "source": "x_tick_labels"}
+
+    display_labels = _metadata_sequence(payload.metadata.get("x_display_labels"))
+    if display_labels is not None and len(display_labels) == int(x_values.size):
+        values = tuple(float(value) for value in x_values)
+        labels = tuple(str(label) for label in display_labels)
+        return values, labels, {"ticks_count": len(values), "source": "x_display_labels"}
+
+    x_ticks = _ticks(x_min, x_max, ticks_count)
+    return x_ticks, tuple(_format_number(value) for value in x_ticks), {"ticks_count": ticks_count}
+
+
+def _explicit_x_axis_ticks(metadata: dict[str, Any]) -> tuple[tuple[float, ...], tuple[str, ...]] | None:
+    values = _metadata_sequence(metadata.get("x_tick_values"))
+    labels = _metadata_sequence(metadata.get("x_tick_labels"))
+    if values is None or labels is None or len(values) != len(labels):
+        return None
+    tick_values: list[float] = []
+    tick_labels: list[str] = []
+    for value, label in zip(values, labels, strict=False):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(number):
+            tick_values.append(number)
+            tick_labels.append(str(label))
+    if not tick_values:
+        return None
+    return tuple(tick_values), tuple(tick_labels)
+
+
+def _metadata_sequence(value: Any) -> tuple[Any, ...] | None:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        return None
+    return tuple(value)
 
 
 def _as_float_array(values: Sequence[float]) -> np.ndarray:
