@@ -1,6 +1,6 @@
 # Session state
 
-Last updated: 2026-05-16, repository audit and post-audit implementation plan
+Last updated: 2026-05-17, interactive dashboard parity slice
 
 ## Current goal
 
@@ -10,13 +10,13 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
 
 - Start with `docs/2026-05-16-audit_implementation_plan.md` for the latest
   audit reconciliation and implementation order.
-- The latest implementation slice covers the large grouped-data path, reusable
-  benchmark tooling, theme tokens, tick-count policy, and locale API. The next
-  recommended consumer slice is to update Metroliza's `hexafe-plotstats`
-  dependency from commit `168edf1...` to this branch/next release, then switch
-  its two HTML dashboard modules to
-  `plotly_spec_from_metroliza_dashboard_payload(...)` for histogram,
-  violin, and IQR specs.
+- The latest implementation slice makes Metroliza-style dashboard specs
+  interactive by default for histogram, violin, and IQR/box, normalizes
+  dashboard histograms to relative frequency percent, suppresses embedded
+  Plotly histogram tables in interactive specs, restores violin extrema/sigma
+  markers, enriches IQR hover/outliers, and keeps trend lines subtle.
+- The next consumer release step is to publish this package slice and update
+  Metroliza's full-SHA `hexafe-plotstats` pin to the published commit.
 - Large Plotly scatter should aggregate by default. Temporal X axes should pick
   minute/hour/day/week buckets automatically from the requested X-axis range and
   target point count. Interactive traces should contain only aggregated data;
@@ -34,17 +34,9 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
   for histogram, IQR, and violin. Histogram preserves bars/curves/spec
   lines/tables from the resolved spec; IQR uses resolved quartile/whisker
   summaries; violin uses resolved body polygons and annotation markers.
-- Metroliza dashboard audit for the next migration step: `modules/export_html_dashboard.py`
-  still owns local Plotly spec builders and should be the reference for
-  theme/layout/reference-line annotations and histogram detail cards;
-  `modules/industrial_analytics_dashboard.py` already uses the Metroliza
-  plotstats adapter for single histogram PNGs/stats, but multi-group histogram,
-  violin, and box static images are still local Matplotlib. Production/CSV
-  histogram and violin charts are static image cards by default.
-- Third continuation slice: histogram and violin Plotly spec
-  helpers now default to static dashboard configs and metadata, with
-  `static=False` available as an explicit opt-in. Scatter remains interactive
-  by default.
+- Metroliza dashboard audit follow-up: Export HTML and CSV Summary can now call
+  the same interactive dashboard policy. Static PNG/workbook rendering remains
+  available through explicit static targets.
 - Fourth continuation slice: large IQR/violin builders keep NumPy arrays for
   large groups, `clean_numeric_with_warnings(...)` avoids list materialization
   for numeric arrays, resolved violin specs omit raw values and serialize

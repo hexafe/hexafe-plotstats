@@ -214,7 +214,7 @@ def test_metroliza_native_histogram_payload_adapter_preserves_overlay_curves_and
     assert mapping["annotations"][1]["role"] == "curve_note"
 
 
-def test_metroliza_dashboard_payload_adapter_builds_static_plotly_specs() -> None:
+def test_metroliza_dashboard_payload_adapter_builds_interactive_plotly_specs() -> None:
     violin_spec = plotly_spec_from_metroliza_dashboard_payload(
         {
             "type": "distribution",
@@ -230,18 +230,21 @@ def test_metroliza_dashboard_payload_adapter_builds_static_plotly_specs() -> Non
         {
             "type": "iqr",
             "labels": ["A", "B"],
-            "series": [[1.0, 2.0, 100.0], [2.0, 3.0, 4.0]],
+            "series": [[1.0, 2.0, 3.0, 100.0], [2.0, 3.0, 4.0, 5.0]],
             "limits": {"lsl": 0.0, "nominal": 2.5, "usl": 5.0},
         },
         title="Diameter IQR",
     )
 
     assert violin_spec["metadata"]["backend"] == "plotly"
-    assert violin_spec["metadata"]["interactive_enabled"] is False
+    assert violin_spec["metadata"]["interactive_enabled"] is True
     assert violin_spec["metadata"]["theme"]["name"] == "dark"
     assert all(trace.get("meta", {}).get("contains_raw_points") is not True for trace in violin_spec["data"])
+    violin_kinds = {trace.get("meta", {}).get("kind") for trace in violin_spec["data"]}
+    assert {"mean", "minimum", "maximum", "sigma_lower", "sigma_upper"}.issubset(violin_kinds)
     assert iqr_spec["metadata"]["kind"] == "iqr"
-    assert iqr_spec["config"]["staticPlot"] is True
+    assert "staticPlot" not in iqr_spec["config"]
+    assert any(trace.get("name") == "Outliers" for trace in iqr_spec["data"])
 
 
 def test_metroliza_chart_artifact_builds_histogram_plotly_png_and_stats() -> None:
@@ -281,6 +284,14 @@ def test_metroliza_chart_artifact_builds_grouped_histogram_spec_and_excel_data()
     )
 
     assert artifact["plotly_spec"]["metadata"]["data_policy"] == "grouped_histogram_bins"
+    assert artifact["plotly_spec"]["metadata"]["histogram_y_mode"] == "relative_percent"
+    assert artifact["plotly_spec"]["metadata"]["interactive_enabled"] is True
+    assert "staticPlot" not in artifact["plotly_spec"]["config"]
+    group_shares = {
+        trace["name"]: sum(trace["y"])
+        for trace in artifact["plotly_spec"]["data"]
+    }
+    assert group_shares == {"A": pytest.approx(1.0), "B": pytest.approx(1.0)}
     assert [trace["name"] for trace in artifact["plotly_spec"]["data"]] == ["A", "B"]
     assert len(artifact["excel_chart_data"]["series"]) == 2
     assert artifact["payload_summary"]["group_count"] == 2
@@ -294,6 +305,7 @@ def test_metroliza_chart_artifact_builds_trend_and_trace_payload_specs() -> None
             "x_values": [1, 2, 3],
             "y_values": [10.0, 10.1, 10.2],
             "horizontal_limits": [9.5, 10.5],
+            "limits": {"lsl": 9.5, "usl": 10.5},
         },
         target="html_dashboard",
         include_plotly=True,
@@ -310,6 +322,14 @@ def test_metroliza_chart_artifact_builds_trend_and_trace_payload_specs() -> None
 
     assert trend_artifact["plotly_spec"]["metadata"]["kind"] == "scatter"
     assert trend_artifact["plotly_spec"]["layout"]["shapes"]
+    assert any(
+        annotation.get("text", "").startswith("LSL=")
+        for annotation in trend_artifact["plotly_spec"]["layout"]["annotations"]
+    )
+    assert any(
+        trace.get("meta", {}).get("kind") == "trend" and trace["opacity"] <= 0.35
+        for trace in trend_artifact["plotly_spec"]["data"]
+    )
     assert time_series_artifact["plotly_spec"]["metadata"]["trace_count"] == 1
 
 

@@ -99,7 +99,14 @@ def _box_specs(payload: IQRPayload) -> tuple[BoxPlotSpec, ...]:
                 q3=group.summary.q3,
                 upper_whisker=upper_whisker,
                 outliers=_finite_tuple(group.outliers),
-                metadata={"count": group.summary.count, "index": index - 1},
+                metadata={
+                    "count": group.summary.count,
+                    "index": index - 1,
+                    "mean": group.summary.mean,
+                    "std": group.summary.std,
+                    "iqr": group.summary.iqr,
+                    "outlier_count": len(group.outliers),
+                },
             )
         )
     return tuple(boxes)

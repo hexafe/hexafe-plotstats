@@ -23,6 +23,7 @@ def iqr_payload_to_plotly_spec(payload: IQRPayload, *, static: bool = True) -> d
     traces: list[dict[str, Any]] = []
     if resolved["boxes"]:
         traces.append(_box_trace(resolved["boxes"]))
+        traces.append(_mean_trace(resolved["boxes"]))
     if resolved["outlier_markers"]:
         traces.append(_outlier_trace(resolved["outlier_markers"]))
     traces.extend(line_trace(line) for line in resolved["spec_lines"])
@@ -54,13 +55,47 @@ def _box_trace(boxes: list[dict[str, Any]]) -> dict[str, Any]:
         "fillcolor": boxes[0].get("fill") or "#2563eb",
         "line": {"color": boxes[0].get("stroke") or "#1d4ed8"},
         "opacity": boxes[0].get("opacity", 0.62),
-        "customdata": [[box["metadata"].get("count"), box["label"]] for box in boxes],
+        "customdata": [
+            [
+                box["metadata"].get("count"),
+                box["label"],
+                box["metadata"].get("mean"),
+                box["metadata"].get("std"),
+                box["metadata"].get("iqr"),
+                box["lower_whisker"],
+                box["upper_whisker"],
+                box["metadata"].get("outlier_count"),
+            ]
+            for box in boxes
+        ],
         "hovertemplate": (
             "group=%{customdata[1]}<br>"
             "n=%{customdata[0]}<br>"
-            "q1=%{q1}<br>median=%{median}<br>q3=%{q3}<extra></extra>"
+            "mean=%{customdata[2]}<br>"
+            "std=%{customdata[3]}<br>"
+            "q1=%{q1}<br>median=%{median}<br>q3=%{q3}<br>"
+            "iqr=%{customdata[4]}<br>"
+            "whisker low=%{customdata[5]}<br>"
+            "whisker high=%{customdata[6]}<br>"
+            "outliers=%{customdata[7]}<extra></extra>"
         ),
         "meta": {"data_policy": "resolved_box_statistics", "contains_raw_points": False},
+    }
+
+
+def _mean_trace(boxes: list[dict[str, Any]]) -> dict[str, Any]:
+    mean_boxes = [box for box in boxes if box.get("metadata", {}).get("mean") is not None]
+    return {
+        "type": "scatter",
+        "mode": "markers",
+        "name": "Mean",
+        "legendgroup": "iqr_mean",
+        "x": [box["position"] for box in mean_boxes],
+        "y": [box["metadata"]["mean"] for box in mean_boxes],
+        "marker": {"symbol": "diamond", "size": 7, "color": "#111827"},
+        "customdata": [[box["label"], box["metadata"].get("count")] for box in mean_boxes],
+        "hovertemplate": "group=%{customdata[0]}<br>mean=%{y}<br>n=%{customdata[1]}<extra></extra>",
+        "meta": {"data_policy": "resolved_box_mean", "contains_raw_points": False},
     }
 
 

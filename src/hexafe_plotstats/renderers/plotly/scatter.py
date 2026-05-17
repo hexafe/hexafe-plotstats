@@ -81,8 +81,13 @@ def _large_scatter_plotly_spec(payload: ScatterPayload, *, target_interactive_po
             "interactive_point_count": len(aggregate_layer["points"]),
         }
 
+    data = [raw_trace, aggregate_trace]
+    trend_trace = _trend_trace(payload)
+    if trend_trace is not None:
+        data.append(trend_trace)
+
     return {
-        "data": [raw_trace, aggregate_trace],
+        "data": data,
         "layout": {
             "hovermode": "closest",
             "legend": {"groupclick": "toggleitem"},
@@ -101,22 +106,47 @@ def _raw_scatter_plotly_spec(payload: ScatterPayload) -> dict[str, Any]:
         "source_point_count": len(payload.x),
         "interactive_point_count": len(payload.x),
     }
+    data = [
+        {
+            "type": "scattergl",
+            "mode": "markers",
+            "name": "Points",
+            "legendgroup": "scatter_points",
+            "x": list(payload.x),
+            "y": list(payload.y),
+            "marker": {"size": payload.marker_size, "opacity": payload.alpha},
+            "hovertemplate": "x=%{x}<br>y=%{y}<extra></extra>",
+        }
+    ]
+    trend_trace = _trend_trace(payload)
+    if trend_trace is not None:
+        data.append(trend_trace)
     return {
-        "data": [
-            {
-                "type": "scattergl",
-                "mode": "markers",
-                "name": "Points",
-                "legendgroup": "scatter_points",
-                "x": list(payload.x),
-                "y": list(payload.y),
-                "marker": {"size": payload.marker_size, "opacity": payload.alpha},
-                "hovertemplate": "x=%{x}<br>y=%{y}<extra></extra>",
-            }
-        ],
+        "data": data,
         "layout": {"hovermode": "closest", "meta": metadata},
         "config": plotly_config(static=False),
         "metadata": metadata,
+    }
+
+
+def _trend_trace(payload: ScatterPayload) -> dict[str, Any] | None:
+    if not payload.include_trend:
+        return None
+    resolved = to_mapping(scatter_payload_to_resolved_spec(payload))
+    line = resolved.get("trend_line")
+    if not isinstance(line, dict):
+        return None
+    return {
+        "type": "scatter",
+        "mode": "lines",
+        "name": line.get("label") or "Trend",
+        "legendgroup": "scatter_trend",
+        "x": [line.get("x0"), line.get("x1")],
+        "y": [line.get("y0"), line.get("y1")],
+        "line": {"color": line.get("stroke") or "#f97316", "width": 1.1, "dash": "dash"},
+        "opacity": 0.35,
+        "hovertemplate": "Trend<extra></extra>",
+        "meta": {"kind": "trend", "data_policy": "least_squares"},
     }
 
 

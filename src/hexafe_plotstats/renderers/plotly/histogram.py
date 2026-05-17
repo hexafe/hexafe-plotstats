@@ -10,6 +10,7 @@ from ._common import dash_name, line_trace, plotly_config, require_plotly_graph_
 
 def histogram_payload_to_plotly_spec(payload: HistogramPayload, *, static: bool = True) -> dict[str, Any]:
     resolved = to_mapping(histogram_payload_to_resolved_spec(payload))
+    y_mode = _histogram_y_mode(payload)
     metadata = {
         "kind": "histogram",
         "backend": "plotly",
@@ -20,19 +21,22 @@ def histogram_payload_to_plotly_spec(payload: HistogramPayload, *, static: bool 
         "default_render_mode": "static" if static else "interactive",
         "recommended_dashboard_mode": "static_snapshot" if static else "interactive_plotly",
         "interactive_enabled": not static,
+        "histogram_y_mode": y_mode,
     }
     traces: list[dict[str, Any]] = []
     if resolved["bars"]:
-        traces.append(_bar_trace(resolved["bars"], density=payload.density))
+        traces.append(_bar_trace(resolved["bars"], density=payload.density, y_mode=y_mode))
     traces.extend(_curve_trace(curve) for curve in resolved["curves"])
     traces.extend(line_trace(line) for line in resolved["spec_lines"])
     if resolved.get("mean_line") is not None:
         traces.append(line_trace(resolved["mean_line"]))
-    if resolved.get("table") is not None:
+    if static and resolved.get("table") is not None:
         traces.append(_table_trace(resolved["table"]))
 
     layout = resolved_layout(resolved, metadata)
-    if resolved.get("table") is not None:
+    if y_mode == "relative_percent":
+        layout["yaxis"] = {**layout["yaxis"], "title": {"text": "Frequency (%)"}, "tickformat": ".0%"}
+    if static and resolved.get("table") is not None:
         layout["xaxis"] = {**layout["xaxis"], "domain": [0.0, 0.72]}
     layout["barmode"] = "overlay"
     return {"data": traces, "layout": layout, "config": plotly_config(static=static), "metadata": metadata, "resolved": resolved}
@@ -45,24 +49,49 @@ def render_histogram_plotly(payload: HistogramPayload, *, static: bool = True) -
     return RenderResult(fig=fig, ax=None, metadata={**spec["metadata"], "plotly_config": spec["config"]})
 
 
-def _bar_trace(bars: list[dict[str, Any]], *, density: bool) -> dict[str, Any]:
+def _histogram_y_mode(payload: HistogramPayload) -> str:
+    raw = (
+        payload.metadata.get("histogram_y_mode")
+        or payload.metadata.get("y_mode")
+        or payload.metadata.get("normalization")
+    )
+    if str(raw or "").strip().lower() in {"relative_percent", "frequency_percent", "percent"}:
+        return "relative_percent"
+    return "density" if payload.density else "count"
+
+
+def _bar_trace(bars: list[dict[str, Any]], *, density: bool, y_mode: str) -> dict[str, Any]:
+    raw_values = [float(bar["y1"]) for bar in bars]
+    total = sum(raw_values)
+    if y_mode == "relative_percent" and total > 0.0:
+        y_values = [value / total for value in raw_values]
+        customdata = [[bar["x0"], bar["x1"], raw, value] for bar, raw, value in zip(bars, raw_values, y_values, strict=False)]
+        hovertemplate = (
+            "bin=%{customdata[0]}..%{customdata[1]}<br>"
+            "frequency=%{customdata[3]:.2%}<br>"
+            "count=%{customdata[2]}<extra></extra>"
+        )
+    else:
+        y_values = raw_values
+        customdata = [[bar["x0"], bar["x1"], bar["y1"]] for bar in bars]
+        hovertemplate = (
+            "bin=%{customdata[0]}..%{customdata[1]}<br>"
+            f"{'density' if density else 'count'}=%{{customdata[2]}}<extra></extra>"
+        )
     return {
         "type": "bar",
         "name": "Histogram",
         "legendgroup": "histogram",
         "x": [(bar["x0"] + bar["x1"]) / 2.0 for bar in bars],
-        "y": [bar["y1"] for bar in bars],
+        "y": y_values,
         "width": [bar["x1"] - bar["x0"] for bar in bars],
         "marker": {
             "color": bars[0].get("fill") or "#2563eb",
             "line": {"color": bars[0].get("stroke") or "#1d4ed8", "width": 1},
         },
         "opacity": bars[0].get("opacity", 0.82),
-        "customdata": [[bar["x0"], bar["x1"], bar["y1"]] for bar in bars],
-        "hovertemplate": (
-            "bin=%{customdata[0]}..%{customdata[1]}<br>"
-            f"{'density' if density else 'count'}=%{{customdata[2]}}<extra></extra>"
-        ),
+        "customdata": customdata,
+        "hovertemplate": hovertemplate,
     }
 
 

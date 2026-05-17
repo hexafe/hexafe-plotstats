@@ -7,7 +7,7 @@ from typing import Any
 from typing import Literal
 
 from ._core import histogram_payload, summarize
-from ..models.common import HistogramConfig, IQRConfig, ScatterConfig, SpecLimits
+from ..models.common import HistogramConfig, IQRConfig, ScatterConfig, SpecLimits, ViolinConfig
 from ..models.payloads import HistogramPayload, TableRow
 from ..payloads import build_histogram_payload, build_iqr_payload, build_scatter_payload, build_violin_payload
 from ..renderers import renderer_backend_available, render_histogram, render_iqr, render_scatter, render_violin
@@ -153,7 +153,7 @@ def plotly_spec_from_metroliza_dashboard_payload(
     *,
     title: str = "",
     theme: str | Mapping[str, Any] | None = None,
-    static: bool = True,
+    static: bool = False,
 ) -> dict[str, Any]:
     """Convert Metroliza dashboard chart payloads into plotstats Plotly specs.
 
@@ -199,7 +199,15 @@ def _histogram_artifact(
         )
 
     histogram = histogram_from_metroliza_native_payload(payload)
-    histogram = replace(histogram, metadata=_metadata_with_theme(histogram.metadata, theme))
+    histogram = replace(
+        histogram,
+        metadata=_histogram_metadata_for_dashboard(
+            histogram.metadata,
+            theme=theme,
+            target=target,
+            static=static,
+        ),
+    )
     result = {
         "stats_tables": [_stats_table_from_histogram_payload(histogram, title=_summary_title(payload))],
         "payload_summary": _histogram_summary(histogram, payload),
@@ -290,7 +298,16 @@ def _distribution_artifact(
     groups = _groups_from_series_payload(payload)
     if not groups:
         return _empty_artifact("distribution", "distribution payload contains no groups")
-    violin = build_violin_payload(groups, spec_limits=_spec_limits_from_payload(payload))
+    violin = build_violin_payload(
+        groups,
+        spec_limits=_spec_limits_from_payload(payload),
+        config=ViolinConfig(
+            show_mean=True,
+            show_extrema=True,
+            show_quartiles=True,
+            sigma_policy="both_3_sigma",
+        ),
+    )
     violin = replace(violin, metadata=_metadata_with_theme(violin.metadata, theme))
     result: dict[str, Any] = {
         "payload_summary": _grouped_series_summary("distribution", groups),
@@ -326,7 +343,7 @@ def _iqr_artifact(
     iqr = build_iqr_payload(
         groups,
         spec_limits=_spec_limits_from_payload(payload),
-        config=IQRConfig(showfliers=False),
+        config=IQRConfig(showfliers=True),
     )
     iqr = replace(iqr, metadata=_metadata_with_theme(iqr.metadata, theme))
     result: dict[str, Any] = {
@@ -462,7 +479,7 @@ def _empty_artifact(chart_type: str, message: str) -> dict[str, Any]:
 def _default_static_mode(chart_type: str, *, target: str) -> bool:
     if chart_type in {"trend", "time_series", "time_series_raw_aggregate"}:
         return False
-    return target != "html_dashboard_interactive"
+    return target not in {"html_dashboard", "html_dashboard_interactive"}
 
 
 def _groups_from_histogram_payload(payload: Mapping[str, Any]) -> dict[str, Sequence[Any]]:
@@ -592,24 +609,36 @@ def _grouped_histogram_plotly_spec(
                 "x": [row["label"] for row in values],
                 "y": [row["share"] for row in values],
                 "customdata": [[row["count"]] for row in values],
-                "hovertemplate": "%{x}<br>share=%{y:.2%}<br>count=%{customdata[0]}<extra></extra>",
+                "hovertemplate": "%{x}<br>frequency=%{y:.2%}<br>count=%{customdata[0]}<extra></extra>",
             }
         )
+    shapes, annotations = _vertical_reference_shapes_and_annotations(payload)
+    config: dict[str, Any] = {"responsive": True, "displaylogo": False}
+    if static:
+        config["staticPlot"] = True
+        config["displayModeBar"] = False
     return {
         "data": traces,
         "layout": {
             "title": {"text": str(payload.get("title") or "Grouped histogram")},
             "barmode": "overlay",
-            "yaxis": {"tickformat": ".0%", "title": {"text": "Share of group"}},
+            "yaxis": {"tickformat": ".0%", "title": {"text": "Frequency (%)"}},
             "xaxis": {"title": {"text": "Measurement"}},
-            "meta": {"theme": theme, "data_policy": "grouped_histogram_bins"},
+            "shapes": shapes,
+            "annotations": annotations,
+            "meta": {
+                "theme": theme,
+                "data_policy": "grouped_histogram_bins",
+                "histogram_y_mode": "relative_percent",
+            },
         },
-        "config": {"responsive": True, "staticPlot": static, "displaylogo": False},
+        "config": config,
         "metadata": {
             "kind": "histogram",
             "backend": "plotly",
             "group_count": len(groups),
             "data_policy": "grouped_histogram_bins",
+            "histogram_y_mode": "relative_percent",
             "interactive_enabled": not static,
             "theme": theme,
         },
@@ -685,9 +714,10 @@ def _decorate_scatter_layout(
     layout.setdefault("xaxis", {}).setdefault("title", {"text": str(payload.get("x_label") or "X")})
     layout.setdefault("yaxis", {}).setdefault("title", {"text": str(payload.get("y_label") or "Measurement")})
     layout.setdefault("meta", {})["theme"] = theme
-    horizontal_limits = payload.get("horizontal_limits") or []
+    horizontal_limits = _horizontal_reference_lines_from_payload(payload)
     shapes = list(layout.get("shapes") or [])
-    for value in horizontal_limits:
+    annotations = list(layout.get("annotations") or [])
+    for label, value, color in horizontal_limits:
         number = _coerce_float(value)
         if number is None:
             continue
@@ -700,11 +730,101 @@ def _decorate_scatter_layout(
                 "x1": 1,
                 "y0": number,
                 "y1": number,
-                "line": {"color": "#B45309", "width": 2, "dash": "dash"},
+                "line": {"color": color, "width": 1, "dash": "dash"},
+            }
+        )
+        annotations.append(
+            {
+                "xref": "paper",
+                "yref": "y",
+                "x": 1.0,
+                "y": number,
+                "xanchor": "right",
+                "text": f"{label}={number:.3f}",
+                "showarrow": False,
+                "font": {"size": 11, "color": color},
+                "bgcolor": "rgba(255,255,255,0.86)",
             }
         )
     if shapes:
         layout["shapes"] = shapes
+    if annotations:
+        layout["annotations"] = annotations
+
+
+def _histogram_metadata_for_dashboard(
+    metadata: Mapping[str, Any],
+    *,
+    theme: str | Mapping[str, Any] | None,
+    target: MetrolizaArtifactTarget,
+    static: bool,
+) -> dict[str, Any]:
+    resolved = _metadata_with_theme(metadata, theme)
+    if target.startswith("html_dashboard") and not static:
+        resolved["histogram_y_mode"] = "relative_percent"
+        axis_labels = dict(resolved.get("axis_labels") or {})
+        axis_labels["y"] = "Frequency (%)"
+        resolved["axis_labels"] = axis_labels
+    return resolved
+
+
+def _vertical_reference_shapes_and_annotations(payload: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    shapes: list[dict[str, Any]] = []
+    annotations: list[dict[str, Any]] = []
+    for label, value, color in _vertical_reference_lines_from_payload(payload):
+        number = _coerce_float(value)
+        if number is None:
+            continue
+        shapes.append(
+            {
+                "type": "line",
+                "xref": "x",
+                "yref": "paper",
+                "x0": number,
+                "x1": number,
+                "y0": 0,
+                "y1": 1,
+                "line": {"color": color, "width": 1, "dash": "dash"},
+            }
+        )
+        annotations.append(
+            {
+                "xref": "x",
+                "yref": "paper",
+                "x": number,
+                "y": 1.06,
+                "text": f"{label}={number:.3f}",
+                "showarrow": False,
+                "font": {"size": 11, "color": color},
+                "bgcolor": "rgba(255,255,255,0.86)",
+            }
+        )
+    return shapes, annotations
+
+
+def _vertical_reference_lines_from_payload(payload: Mapping[str, Any]) -> list[tuple[str, Any, str]]:
+    limits = payload.get("limits") if isinstance(payload.get("limits"), Mapping) else payload
+    return [
+        ("LSL", limits.get("lsl"), "#dc2626"),
+        ("Nominal", limits.get("nominal"), "#16a34a"),
+        ("USL", limits.get("usl"), "#dc2626"),
+    ]
+
+
+def _horizontal_reference_lines_from_payload(payload: Mapping[str, Any]) -> list[tuple[str, Any, str]]:
+    limits = payload.get("limits") if isinstance(payload.get("limits"), Mapping) else payload
+    references = [
+        ("LSL", limits.get("lsl"), "#dc2626"),
+        ("Nominal", limits.get("nominal"), "#16a34a"),
+        ("USL", limits.get("usl"), "#dc2626"),
+    ]
+    named_values = [(label, value, color) for label, value, color in references if _coerce_float(value) is not None]
+    if named_values:
+        return named_values
+    fallback = []
+    for index, value in enumerate(payload.get("horizontal_limits") or (), start=1):
+        fallback.append((f"Limit {index}", value, "#B45309"))
+    return fallback
 
 
 def _metadata_with_theme(metadata: Mapping[str, Any], theme: str | Mapping[str, Any] | None) -> dict[str, Any]:

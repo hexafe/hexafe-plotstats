@@ -63,9 +63,9 @@ Current state:
 - `backend="rust"` is an explicit opt-in and returns PNG bytes when the optional native module is installed.
 - `backend="plotly"` is optional. It resolves histogram, IQR, violin, and
   scatter payloads into Plotly-compatible trace/layout dictionaries and creates
-  `go.Figure` objects when the `plotly` extra is installed. Histogram, IQR, and
-  violin specs are static by default for dashboard use; scatter remains
-  interactive by default.
+  `go.Figure` objects when the `plotly` extra is installed. Dashboard adapter
+  specs are interactive by default; explicit static rendering remains available
+  for workbook/static-image handoffs.
 
 This keeps the user-facing API stable while Rust parity work proceeds behind the backend boundary.
 
@@ -147,22 +147,23 @@ Raw points are rendered as a separate bounded static-raster heatmap layer with
 its own legend group, so users can hide raw data without removing the aggregated
 interactive trace and without serializing every raw point into Plotly.
 
-## Static Dashboard Defaults
+## Dashboard Plotly Defaults
 
-Histogram and violin dashboard views should favor workbook-matching static
-snapshots by default. Their Plotly spec helpers therefore include a static
-config unless interactivity is explicitly requested:
+Metroliza-style HTML dashboard payloads resolve to interactive Plotly specs by
+default. Histogram dashboard specs can normalize bars to relative frequency
+percent while preserving raw counts in hover/details, and interactive histogram
+specs omit the embedded Plotly summary-table trace.
 
 ```python
-from hexafe_plotstats import histogram_payload_to_plotly_spec
+from hexafe_plotstats.adapters import plotly_spec_from_metroliza_dashboard_payload
 
-static_spec = histogram_payload_to_plotly_spec(payload)  # config.staticPlot=True
-interactive_spec = histogram_payload_to_plotly_spec(payload, static=False)
+interactive_spec = plotly_spec_from_metroliza_dashboard_payload(payload)
+static_spec = plotly_spec_from_metroliza_dashboard_payload(payload, static=True)
 ```
 
-This mirrors the Metroliza dashboard contract: distribution-heavy charts remain
-static unless a caller intentionally opts into browser interaction, while large
-scatter/time-series views can use bounded interactive aggregates.
+The lower-level Plotly helpers still accept `static=True` for workbook-matching
+snapshots, while scatter/time-series views keep bounded interactive aggregates
+for large datasets.
 
 ## Supported charts
 

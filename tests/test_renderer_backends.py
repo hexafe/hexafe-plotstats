@@ -44,6 +44,7 @@ from hexafe_plotstats.specs import (
 from hexafe_plotstats.renderers.plotly import (
     histogram_payload_to_plotly_spec,
     iqr_payload_to_plotly_spec,
+    scatter_payload_to_plotly_spec,
     violin_payload_to_plotly_spec,
 )
 import hexafe_plotstats.renderers.rust.backend as rust_backend
@@ -409,6 +410,8 @@ def test_iqr_plotly_spec_uses_resolved_box_statistics() -> None:
     assert spec["layout"]["xaxis"]["ticktext"] == ["A", "B"]
     assert len(box_trace["q1"]) == 2
     assert "y" not in box_trace
+    assert "whisker low=%{customdata[5]}" in box_trace["hovertemplate"]
+    assert any(trace.get("name") == "Mean" for trace in spec["data"])
     assert any(trace.get("name") == "Outliers" for trace in spec["data"])
 
 
@@ -429,6 +432,21 @@ def test_violin_plotly_spec_uses_resolved_body_polygons() -> None:
     assert all(trace["meta"]["contains_raw_points"] is False for trace in body_traces)
     assert all(len(trace["x"]) < 250 for trace in body_traces)
     assert any(trace["meta"].get("kind") == "mean" for trace in spec["data"])
+    assert any(trace["meta"].get("kind") == "minimum" for trace in spec["data"])
+    assert any(trace["meta"].get("kind") == "maximum" for trace in spec["data"])
+
+
+def test_violin_plotly_spec_exposes_sigma_reference_lines() -> None:
+    payload = build_violin_payload(
+        {"A": [1, 2, 3, 4, 5], "B": [2, 3, 4, 5, 6]},
+        config=ViolinConfig(sigma_policy="both_3_sigma"),
+    )
+
+    spec = violin_payload_to_plotly_spec(payload)
+    line_kinds = {trace.get("meta", {}).get("kind") for trace in spec["data"] if trace.get("mode") == "lines"}
+
+    assert "sigma_lower" in line_kinds
+    assert "sigma_upper" in line_kinds
 
 
 def test_histogram_and_violin_plotly_specs_can_opt_into_interactivity() -> None:
@@ -442,6 +460,24 @@ def test_histogram_and_violin_plotly_specs_can_opt_into_interactivity() -> None:
     assert violin_spec["metadata"]["default_render_mode"] == "interactive"
     assert "staticPlot" not in histogram_spec["config"]
     assert "staticPlot" not in violin_spec["config"]
+    assert not any(trace.get("type") == "table" for trace in histogram_spec["data"])
+
+
+def test_histogram_plotly_spec_can_normalize_dashboard_frequency() -> None:
+    payload = build_histogram_payload(
+        [1, 1, 2, 3],
+        config=HistogramConfig(density=False, include_fit=False),
+        metadata={"histogram_y_mode": "relative_percent"},
+    )
+
+    spec = histogram_payload_to_plotly_spec(payload, static=False)
+    bar_trace = next(trace for trace in spec["data"] if trace["type"] == "bar")
+
+    assert spec["metadata"]["histogram_y_mode"] == "relative_percent"
+    assert spec["layout"]["yaxis"]["title"]["text"] == "Frequency (%)"
+    assert spec["layout"]["yaxis"]["tickformat"] == ".0%"
+    assert sum(bar_trace["y"]) == pytest.approx(1.0)
+    assert "frequency=%{customdata[3]:.2%}" in bar_trace["hovertemplate"]
 
 
 def test_scatter_payload_resolves_to_pure_chart_spec_mapping_with_trend() -> None:
@@ -462,6 +498,20 @@ def test_scatter_payload_resolves_to_pure_chart_spec_mapping_with_trend() -> Non
     assert mapping["trend_line"]["y0"] == pytest.approx(2.0)
     assert mapping["trend_line"]["y1"] == pytest.approx(8.0)
     assert mapping["metadata"]["include_trend"] is True
+
+
+def test_scatter_plotly_spec_renders_subtle_trend_when_enabled() -> None:
+    payload = build_scatter_payload(
+        [1, 2, 3, 4],
+        [2, 4, 6, 8],
+        ScatterConfig(include_trend=True),
+    )
+
+    spec = scatter_payload_to_plotly_spec(payload)
+    trend_trace = next(trace for trace in spec["data"] if trace.get("meta", {}).get("kind") == "trend")
+
+    assert trend_trace["line"]["width"] <= 1.1
+    assert trend_trace["opacity"] <= 0.35
 
 
 def test_hexbin_scatter_resolves_explicit_cells() -> None:
