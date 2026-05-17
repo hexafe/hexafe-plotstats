@@ -31,7 +31,7 @@ def render_violin_matplotlib(payload: ViolinPayload) -> RenderResult:
         for position, group in zip(positions, payload.groups):
             if show_mean and group.summary.mean is not None:
                 ax.scatter([position], [group.summary.mean], color="black", s=12, zorder=3)
-                _annotate_value(ax, position, group.summary.mean, "mean", "black")
+                _annotate_value(ax, position, group.summary.mean, "mean", "black", y_offset=8)
             if show_quartiles:
                 if group.summary.q1 is not None:
                     ax.hlines(group.summary.q1, position - 0.12, position + 0.12, color="tab:orange", linewidth=1.2, zorder=3)
@@ -43,8 +43,8 @@ def render_violin_matplotlib(payload: ViolinPayload) -> RenderResult:
                 ax.vlines(position, group.summary.minimum, group.summary.maximum, color="tab:gray", linewidth=1, alpha=0.8)
                 ax.scatter([position], [group.summary.minimum], color="tab:gray", marker="_", s=42, zorder=3)
                 ax.scatter([position], [group.summary.maximum], color="tab:gray", marker="_", s=42, zorder=3)
-                _annotate_value(ax, position, group.summary.minimum, "min", "tab:gray")
-                _annotate_value(ax, position, group.summary.maximum, "max", "tab:gray")
+                _annotate_value(ax, position, group.summary.minimum, "min", "tab:gray", y_offset=-8)
+                _annotate_value(ax, position, group.summary.maximum, "max", "tab:gray", y_offset=8)
 
         for line in resolved.spec_lines:
             if line.kind.startswith("sigma_"):
@@ -59,7 +59,16 @@ def render_violin_matplotlib(payload: ViolinPayload) -> RenderResult:
     return RenderResult(fig=fig, ax=ax, metadata={"kind": "violin", "metadata": payload.metadata})
 
 
-def _annotate_value(ax, x_value: float, y_value: float | None, label: str, color: str, *, x_offset: int = 4) -> None:
+def _annotate_value(
+    ax,
+    x_value: float,
+    y_value: float | None,
+    label: str,
+    color: str,
+    *,
+    x_offset: int = 4,
+    y_offset: int = 0,
+) -> None:
     if y_value is None:
         return
     try:
@@ -71,13 +80,19 @@ def _annotate_value(ax, x_value: float, y_value: float | None, label: str, color
     ax.annotate(
         f"{label}={_format_annotation_number(number)}",
         xy=(x_value, number),
-        xytext=(x_offset, 0),
+        xytext=(x_offset, y_offset),
         textcoords="offset points",
         va="center",
         ha="left",
-        fontsize=8,
+        fontsize=7,
         color=color,
-        zorder=4,
+        zorder=7,
+        bbox={
+            "boxstyle": "round,pad=0.14",
+            "facecolor": "#ffffff",
+            "edgecolor": "#d1d5db",
+            "alpha": 0.9,
+        },
     )
 
 

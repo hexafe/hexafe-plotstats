@@ -305,7 +305,7 @@ def _distribution_artifact(
             show_mean=True,
             show_extrema=True,
             show_quartiles=True,
-            sigma_policy="both_3_sigma",
+            sigma_policy=_series_sigma_policy(payload),
         ),
     )
     violin = replace(violin, metadata=_series_axis_metadata(violin.metadata, payload, theme=theme))
@@ -347,7 +347,7 @@ def _iqr_artifact(
             showfliers=True,
             show_mean=True,
             show_extrema=True,
-            sigma_policy="both_3_sigma",
+            sigma_policy=_series_sigma_policy(payload),
         ),
     )
     iqr = replace(iqr, metadata=_series_axis_metadata(iqr.metadata, payload, theme=theme))
@@ -398,7 +398,7 @@ def _scatter_like_artifact(
         y_values,
         config=ScatterConfig(include_trend=chart_type == "trend"),
         metadata={
-            "title": str(payload.get("title") or ""),
+            "title": _scatter_title(payload, chart_type=chart_type),
             "theme": theme,
             "x_label": _scatter_x_axis_label(payload, chart_type),
             "y_label": _scatter_y_axis_label(payload),
@@ -415,7 +415,7 @@ def _scatter_like_artifact(
         "excel_chart_data": {
             "series": [
                 {
-                    "name": str(payload.get("title") or chart_type),
+                    "name": _scatter_title(payload, chart_type=chart_type),
                     "x": list(scatter.x),
                     "y": list(scatter.y),
                 }
@@ -721,7 +721,7 @@ def _decorate_scatter_layout(
     metadata.setdefault("chart_type", chart_type)
     metadata.setdefault("theme", theme)
     layout = spec.setdefault("layout", {})
-    layout.setdefault("title", {"text": str(payload.get("title") or chart_type)})
+    layout.setdefault("title", {"text": _scatter_title(payload, chart_type=chart_type)})
     layout.setdefault("xaxis", {}).setdefault("title", {"text": _scatter_x_axis_label(payload, chart_type)})
     layout.setdefault("yaxis", {}).setdefault("title", {"text": _scatter_y_axis_label(payload)})
     layout.setdefault("meta", {})["theme"] = theme
@@ -849,22 +849,41 @@ def _series_y_axis_label(payload: Mapping[str, Any]) -> str:
 
 
 def _scatter_x_axis_label(payload: Mapping[str, Any], chart_type: str) -> str:
+    if chart_type in {"distribution", "scatter", "trend"}:
+        return "Sample number"
     style = payload.get("style") if isinstance(payload.get("style"), Mapping) else {}
     value = payload.get("x_label") or style.get("axis_label_x")
     if value:
         return str(value)
     if chart_type in {"time_series", "time_series_raw_aggregate"}:
         return "Datetime"
-    return "Samples"
+    return "Sample number"
 
 
 def _scatter_y_axis_label(payload: Mapping[str, Any]) -> str:
     style = payload.get("style") if isinstance(payload.get("style"), Mapping) else {}
-    for key in ("y_label", "metric_label", "characteristic", "characteristic_name"):
+    for key in ("y_label", "characteristic_title", "metric_label", "characteristic", "characteristic_name"):
         value = payload.get(key)
         if value:
             return str(value)
-    return str(style.get("axis_label_y") or "Measurement")
+    return str(style.get("axis_label_y") or "Characteristic")
+
+
+def _scatter_title(payload: Mapping[str, Any], *, chart_type: str) -> str:
+    for key in ("characteristic_title", "characteristic", "characteristic_name", "metric_label", "title"):
+        value = payload.get(key)
+        if value:
+            return str(value)
+    return chart_type
+
+
+def _series_sigma_policy(payload: Mapping[str, Any]) -> str:
+    style = payload.get("style") if isinstance(payload.get("style"), Mapping) else {}
+    raw_value = payload.get("sigma_policy") or style.get("sigma_policy")
+    normalized = str(raw_value or "").strip().lower()
+    if normalized in {"none", "plus_3_sigma", "both_3_sigma"}:
+        return normalized
+    return "none"
 
 
 def _histogram_x_axis_label(payload: Mapping[str, Any]) -> str:

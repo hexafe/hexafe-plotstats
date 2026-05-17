@@ -1385,7 +1385,7 @@
     "scatter_trend": {
       "axes": [
         {
-          "label": "Samples",
+          "label": "Sample number",
           "maximum": 4.24,
           "metadata": {
             "ticks_count": 6
@@ -1411,21 +1411,22 @@
           ]
         },
         {
-          "label": "Measurement",
+          "label": "Characteristic",
           "maximum": 5.3272,
           "metadata": {
+            "inferred_decimals": 1,
             "ticks_count": 6
           },
           "minimum": 0.7128,
           "orientation": "y",
           "scale": "linear",
           "tick_labels": [
-            "0.7128",
-            "1.63568",
-            "2.55856",
-            "3.48144",
-            "4.40432",
-            "5.3272"
+            "0.7",
+            "1.6",
+            "2.6",
+            "3.5",
+            "4.4",
+            "5.3"
           ],
           "tick_values": [
             0.7128,

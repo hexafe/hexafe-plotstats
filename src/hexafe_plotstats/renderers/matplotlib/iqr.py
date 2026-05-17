@@ -39,7 +39,8 @@ def render_iqr_matplotlib(payload: IQRPayload) -> RenderResult:
             ax.scatter([marker.x], [marker.y], color=color, marker=symbol, s=max(marker.size * 8.0, 16.0), zorder=3)
             if marker.kind in {"mean", "minimum", "maximum"}:
                 label = {"minimum": "min", "maximum": "max"}.get(marker.kind, marker.kind)
-                _annotate_value(ax, marker.x, marker.y, label, color)
+                y_offset = {"minimum": -8, "mean": 8, "maximum": 8}.get(marker.kind, 0)
+                _annotate_value(ax, marker.x, marker.y, label, color, y_offset=y_offset)
 
         for line in resolved.spec_lines:
             if line.kind.startswith("sigma_"):
@@ -54,7 +55,16 @@ def render_iqr_matplotlib(payload: IQRPayload) -> RenderResult:
     return RenderResult(fig=fig, ax=ax, metadata={"kind": "iqr", "metadata": payload.metadata})
 
 
-def _annotate_value(ax, x_value: float, y_value: float | None, label: str, color: str, *, x_offset: int = 4) -> None:
+def _annotate_value(
+    ax,
+    x_value: float,
+    y_value: float | None,
+    label: str,
+    color: str,
+    *,
+    x_offset: int = 4,
+    y_offset: int = 0,
+) -> None:
     if y_value is None:
         return
     try:
@@ -66,13 +76,19 @@ def _annotate_value(ax, x_value: float, y_value: float | None, label: str, color
     ax.annotate(
         f"{label}={_format_annotation_number(number)}",
         xy=(x_value, number),
-        xytext=(x_offset, 0),
+        xytext=(x_offset, y_offset),
         textcoords="offset points",
         va="center",
         ha="left",
-        fontsize=8,
+        fontsize=7,
         color=color,
-        zorder=4,
+        zorder=7,
+        bbox={
+            "boxstyle": "round,pad=0.14",
+            "facecolor": "#ffffff",
+            "edgecolor": "#d1d5db",
+            "alpha": 0.9,
+        },
     )
 
 

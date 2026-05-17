@@ -65,10 +65,12 @@ def scatter_payload_to_resolved_spec(
     ticks_count = _tick_count(payload.metadata, sample_count=point_count)
     x_ticks = _ticks(x_min, x_max, ticks_count)
     y_ticks = _ticks(y_min, y_max, ticks_count)
+    y_tick_decimals = _infer_tick_decimals(y_values)
+    axis_labels = _axis_labels(payload)
     axes = (
         AxisSpec(
             orientation="x",
-            label=str(payload.metadata.get("x_label") or "Samples"),
+            label=axis_labels["x"],
             minimum=x_min,
             maximum=x_max,
             tick_values=x_ticks,
@@ -77,19 +79,27 @@ def scatter_payload_to_resolved_spec(
         ),
         AxisSpec(
             orientation="y",
-            label=str(payload.metadata.get("y_label") or "Measurement"),
+            label=axis_labels["y"],
             minimum=y_min,
             maximum=y_max,
             tick_values=y_ticks,
-            tick_labels=tuple(_format_number(value) for value in y_ticks),
-            metadata={"ticks_count": ticks_count},
+            tick_labels=tuple(_format_tick_with_decimals(value, decimals=y_tick_decimals) for value in y_ticks),
+            metadata={"ticks_count": ticks_count, "inferred_decimals": y_tick_decimals},
         ),
     )
 
     return ResolvedScatterSpec(
         chart_type="scatter",
         canvas=canvas,
-        title=TextSpec(text="Scatter", x=36.0, y=28.0, font_size=18.0, fill=str(colors.get("text") or "#111827"), weight="600", role="title"),
+        title=TextSpec(
+            text=_scatter_title(payload),
+            x=36.0,
+            y=28.0,
+            font_size=18.0,
+            fill=str(colors.get("text") or "#111827"),
+            weight="600",
+            role="title",
+        ),
         plot_rect=plot_rect,
         axes=axes,
         markers=markers,
@@ -112,6 +122,65 @@ def scatter_payload_to_resolved_spec(
             "theme": theme,
         },
     )
+
+
+def _scatter_title(payload: ScatterPayload) -> str:
+    for key in ("characteristic_title", "characteristic", "characteristic_name", "metric_label", "title"):
+        value = payload.metadata.get(key)
+        if value:
+            return str(value)
+    return "Scatter"
+
+
+def _axis_labels(payload: ScatterPayload) -> dict[str, str]:
+    axis_labels = payload.metadata.get("axis_labels")
+    if isinstance(axis_labels, dict):
+        x_axis = axis_labels.get("x")
+        y_axis = axis_labels.get("y")
+        if x_axis or y_axis:
+            return {
+                "x": str(x_axis or "Sample number"),
+                "y": str(y_axis or _default_y_axis_label(payload)),
+            }
+    return {
+        "x": str(payload.metadata.get("x_label") or "Sample number"),
+        "y": _default_y_axis_label(payload),
+    }
+
+
+def _default_y_axis_label(payload: ScatterPayload) -> str:
+    for key in ("y_label", "characteristic_title", "characteristic", "characteristic_name", "metric_label"):
+        value = payload.metadata.get(key)
+        if value:
+            return str(value)
+    return "Characteristic"
+
+
+def _infer_tick_decimals(values: np.ndarray, *, max_decimals: int = 6) -> int:
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return 3
+    for decimals in range(max_decimals + 1):
+        rounded = np.round(finite, decimals)
+        tolerance = max(1e-12, 10.0 ** (-(decimals + 3)))
+        if np.allclose(finite, rounded, rtol=0.0, atol=tolerance):
+            return decimals
+    return max_decimals
+
+
+def _format_tick_with_decimals(value: float, *, decimals: int) -> str:
+    if value == 0.0:
+        return "0"
+    magnitude = abs(value)
+    if magnitude >= 10_000 or magnitude < 0.001:
+        return f"{value:.3g}"
+    precision = max(0, min(int(decimals), 8))
+    formatted = f"{value:.{precision}f}"
+    if "." in formatted:
+        formatted = formatted.rstrip("0").rstrip(".")
+    if formatted in {"-0", "-0.0"}:
+        return "0"
+    return formatted
 
 
 def _as_float_array(values: Sequence[float]) -> np.ndarray:

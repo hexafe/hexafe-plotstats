@@ -241,10 +241,55 @@ def test_metroliza_dashboard_payload_adapter_builds_interactive_plotly_specs() -
     assert violin_spec["metadata"]["theme"]["name"] == "dark"
     assert all(trace.get("meta", {}).get("contains_raw_points") is not True for trace in violin_spec["data"])
     violin_kinds = {trace.get("meta", {}).get("kind") for trace in violin_spec["data"]}
-    assert {"mean", "minimum", "maximum", "sigma_lower", "sigma_upper"}.issubset(violin_kinds)
+    assert {"mean", "minimum", "maximum"}.issubset(violin_kinds)
+    assert {"sigma_lower", "sigma_upper"}.isdisjoint(violin_kinds)
     assert iqr_spec["metadata"]["kind"] == "iqr"
     assert "staticPlot" not in iqr_spec["config"]
     assert any(trace.get("name") == "Outliers" for trace in iqr_spec["data"])
+
+
+def test_metroliza_dashboard_payload_adapter_can_opt_into_sigma_annotations() -> None:
+    violin_spec = plotly_spec_from_metroliza_dashboard_payload(
+        {
+            "type": "distribution",
+            "render_mode": "violin",
+            "labels": ["A", "B"],
+            "series": [[1.0, 2.0, 3.0], [2.0, 3.0, 4.0]],
+            "sigma_policy": "both_3_sigma",
+        },
+        title="Diameter violin",
+    )
+    iqr_spec = plotly_spec_from_metroliza_dashboard_payload(
+        {
+            "type": "iqr",
+            "labels": ["A"],
+            "series": [[1.0, 2.0, 3.0, 4.0, 5.0]],
+            "sigma_policy": "plus_3_sigma",
+        },
+        title="Diameter IQR",
+    )
+
+    violin_kinds = {trace.get("meta", {}).get("kind") for trace in violin_spec["data"]}
+    iqr_kinds = {trace.get("meta", {}).get("kind") for trace in iqr_spec["data"]}
+    assert {"sigma_lower", "sigma_upper"}.issubset(violin_kinds)
+    assert "sigma_upper" in iqr_kinds
+
+
+def test_metroliza_scatter_adapter_prefers_characteristic_title_and_sample_number_axis() -> None:
+    artifact = chart_artifact_from_metroliza_payload(
+        {
+            "type": "trend",
+            "characteristic_title": "Diameter",
+            "x_values": [1, 2, 3],
+            "y_values": [10.1, 10.2, 10.3],
+        },
+        target="html_dashboard",
+        include_plotly=True,
+    )
+
+    assert artifact["plotly_spec"]["layout"]["title"]["text"] == "Diameter"
+    assert artifact["plotly_spec"]["layout"]["xaxis"]["title"]["text"] == "Sample number"
+    assert artifact["plotly_spec"]["layout"]["yaxis"]["title"]["text"] == "Diameter"
 
 
 def test_metroliza_chart_artifact_builds_histogram_plotly_png_and_stats() -> None:
@@ -323,7 +368,7 @@ def test_metroliza_chart_artifact_builds_trend_and_trace_payload_specs() -> None
     )
 
     assert trend_artifact["plotly_spec"]["metadata"]["kind"] == "scatter"
-    assert trend_artifact["plotly_spec"]["layout"]["xaxis"]["title"]["text"] == "Datetime"
+    assert trend_artifact["plotly_spec"]["layout"]["xaxis"]["title"]["text"] == "Sample number"
     assert trend_artifact["plotly_spec"]["layout"]["yaxis"]["title"]["text"] == "Diameter"
     reference_names = {
         trace.get("name")

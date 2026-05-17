@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import PercentFormatter
 
 from ...models.payloads import HistogramPayload
 from ...models.render import RenderResult
@@ -31,17 +32,36 @@ def render_histogram_matplotlib(payload: HistogramPayload) -> RenderResult:
     resolved = histogram_payload_to_resolved_spec(payload)
     edges = np.asarray(payload.bin_edges, dtype=float)
     heights = np.asarray(payload.bin_values, dtype=float)
+    y_mode = str(
+        payload.metadata.get("histogram_y_mode")
+        or payload.metadata.get("y_mode")
+        or payload.metadata.get("normalization")
+        or ""
+    ).strip().lower()
+    relative_frequency = y_mode in {"relative_percent", "frequency_percent", "percent"}
 
     if edges.size >= 2 and heights.size:
         widths = np.diff(edges)
+        if relative_frequency:
+            counts, _ = np.histogram(np.asarray(payload.values, dtype=float), bins=edges)
+            total = float(np.sum(counts))
+            if total > 0.0:
+                heights = counts.astype(float) / total
         ax.bar(edges[:-1], heights, width=widths, align="edge", alpha=0.8, color="tab:blue")
 
+    curve_y_scale = 1.0
+    if relative_frequency and edges.size >= 2:
+        widths = np.diff(edges)
+        positive_widths = widths[np.isfinite(widths) & (widths > 0.0)]
+        if positive_widths.size:
+            curve_y_scale = float(np.median(positive_widths))
     for curve in resolved.curves:
+        curve_y = np.asarray(curve.y, dtype=float) * curve_y_scale
         if curve.fill_to_baseline and curve.fill_alpha > 0.0:
-            ax.fill_between(curve.x, curve.y, 0.0, color=curve.fill_color or curve.stroke, alpha=curve.fill_alpha, linewidth=0.0)
+            ax.fill_between(curve.x, curve_y, 0.0, color=curve.fill_color or curve.stroke, alpha=curve.fill_alpha, linewidth=0.0)
         ax.plot(
             curve.x,
-            curve.y,
+            curve_y,
             color=curve.stroke,
             linewidth=curve.stroke_width,
             linestyle="--" if curve.dash else "-",
@@ -49,6 +69,8 @@ def render_histogram_matplotlib(payload: HistogramPayload) -> RenderResult:
         )
 
     style_spec_limits(ax, payload.spec_limits)
+    if relative_frequency:
+        ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))
     axis_labels = payload.metadata.get("axis_labels") if isinstance(payload.metadata.get("axis_labels"), dict) else {}
     ax.set_ylabel(str(axis_labels.get("y") or payload.metadata.get("y_label") or ("density" if payload.density else "count")))
     ax.set_xlabel(str(axis_labels.get("x") or payload.metadata.get("x_label") or "value"))

@@ -512,6 +512,25 @@ def test_histogram_plotly_relative_frequency_uses_counts_for_density_payloads() 
     assert spec["layout"]["yaxis"]["range"][1] < 0.8
 
 
+def test_histogram_matplotlib_relative_frequency_scales_bar_heights() -> None:
+    payload = build_histogram_payload(
+        [1, 1, 1, 2, 3],
+        config=HistogramConfig(bins=3, density=False, include_fit=False),
+        metadata={
+            "histogram_y_mode": "relative_percent",
+            "axis_labels": {"x": "Bins", "y": "Frequency (%)"},
+        },
+    )
+
+    result = render_histogram(payload)
+    try:
+        heights = [patch.get_height() for patch in result.ax.patches]
+        assert max(heights) == pytest.approx(0.6)
+        assert result.ax.get_ylabel() == "Frequency (%)"
+    finally:
+        _close_result(result)
+
+
 def test_scatter_payload_resolves_to_pure_chart_spec_mapping_with_trend() -> None:
     payload = build_scatter_payload(
         [1, 2, 3, 4],
@@ -530,6 +549,24 @@ def test_scatter_payload_resolves_to_pure_chart_spec_mapping_with_trend() -> Non
     assert mapping["trend_line"]["y0"] == pytest.approx(2.0)
     assert mapping["trend_line"]["y1"] == pytest.approx(8.0)
     assert mapping["metadata"]["include_trend"] is True
+
+
+def test_scatter_resolved_spec_prefers_characteristic_title_and_infers_tick_precision() -> None:
+    payload = build_scatter_payload(
+        [1, 2, 3, 4],
+        [1.1, 1.2, 1.3, 1.4],
+        metadata={"characteristic_title": "Diameter"},
+    )
+
+    mapping = to_mapping(scatter_payload_to_resolved_spec(payload))
+    y_axis = next(axis for axis in mapping["axes"] if axis["orientation"] == "y")
+    x_axis = next(axis for axis in mapping["axes"] if axis["orientation"] == "x")
+
+    assert mapping["title"]["text"] == "Diameter"
+    assert x_axis["label"] == "Sample number"
+    assert y_axis["label"] == "Diameter"
+    assert y_axis["metadata"]["inferred_decimals"] == 1
+    assert all("." not in label or len(label.split(".", maxsplit=1)[1]) <= 1 for label in y_axis["tick_labels"])
 
 
 def test_scatter_plotly_spec_renders_subtle_trend_when_enabled() -> None:
@@ -556,6 +593,36 @@ def test_scatter_plotly_spec_renders_subtle_trend_when_enabled() -> None:
     assert spec["layout"]["xaxis"]["title"]["text"] == "Datetime"
     assert spec["layout"]["yaxis"]["title"]["text"] == "Diameter"
     assert {"LSL", "USL"}.issubset(reference_names)
+
+
+def test_iqr_and_violin_matplotlib_annotations_use_white_bbox_and_high_zorder() -> None:
+    iqr_payload = build_iqr_payload(
+        {"A": [1, 2, 3, 4, 6]},
+        config=IQRConfig(sigma_policy="both_3_sigma"),
+    )
+    violin_payload = build_violin_payload(
+        {"A": [1, 2, 3, 4, 6]},
+        config=ViolinConfig(sigma_policy="both_3_sigma"),
+    )
+
+    iqr_result = render_iqr(iqr_payload)
+    violin_result = render_violin(violin_payload)
+    try:
+        annotation_texts = [
+            *[text for text in iqr_result.ax.texts if "=" in text.get_text()],
+            *[text for text in violin_result.ax.texts if "=" in text.get_text()],
+        ]
+        assert annotation_texts
+        for text in annotation_texts:
+            bbox = text.get_bbox_patch()
+            assert bbox is not None
+            assert text.get_zorder() >= 7
+            red, green, blue, alpha = bbox.get_facecolor()
+            assert (red, green, blue) == pytest.approx((1.0, 1.0, 1.0))
+            assert alpha >= 0.85
+    finally:
+        _close_result(iqr_result)
+        _close_result(violin_result)
 
 
 def test_hexbin_scatter_resolves_explicit_cells() -> None:
