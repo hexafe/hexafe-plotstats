@@ -1122,7 +1122,11 @@
           "median": 1.2,
           "metadata": {
             "count": 5,
-            "index": 0
+            "index": 0,
+            "iqr": 0.2,
+            "mean": 1.92,
+            "outlier_count": 1,
+            "std": 1.7253985
           },
           "opacity": 0.62,
           "outliers": [
@@ -1141,7 +1145,11 @@
           "median": 2.2,
           "metadata": {
             "count": 5,
-            "index": 1
+            "index": 1,
+            "iqr": 0.2,
+            "mean": 2.2,
+            "outlier_count": 0,
+            "std": 0.15811388
           },
           "opacity": 0.62,
           "outliers": [],
