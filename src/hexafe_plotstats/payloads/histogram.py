@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-import numpy as np
-
 from ..models.common import DistributionConfig, HistogramConfig, SpecLimits
 from ..models.payloads import HistogramPayload
 from ..stats import compute_normality

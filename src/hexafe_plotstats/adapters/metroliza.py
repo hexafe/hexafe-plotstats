@@ -2,13 +2,24 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
+from io import BytesIO
 from typing import Any
+from typing import Literal
 
 from ._core import histogram_payload, summarize
-from ..models.common import HistogramConfig, IQRConfig, SpecLimits
+from ..models.common import HistogramConfig, IQRConfig, ScatterConfig, SpecLimits
 from ..models.payloads import HistogramPayload, TableRow
-from ..payloads import build_histogram_payload, build_iqr_payload, build_violin_payload
-from ..renderers.plotly import histogram_payload_to_plotly_spec, iqr_payload_to_plotly_spec, violin_payload_to_plotly_spec
+from ..payloads import build_histogram_payload, build_iqr_payload, build_scatter_payload, build_violin_payload
+from ..renderers import renderer_backend_available, render_histogram, render_iqr, render_scatter, render_violin
+from ..renderers.plotly import (
+    histogram_payload_to_plotly_spec,
+    iqr_payload_to_plotly_spec,
+    scatter_payload_to_plotly_spec,
+    violin_payload_to_plotly_spec,
+)
+
+MetrolizaArtifactTarget = Literal["html_dashboard", "workbook_image", "excel_chart_data"]
+MetrolizaArtifactBackend = Literal["auto", "matplotlib", "rust"]
 
 
 def _values_from_object(obj: Any) -> tuple[float, ...]:
@@ -56,6 +67,87 @@ def histogram_from_metroliza_native_payload(payload: Mapping[str, Any]) -> Histo
     return hist
 
 
+def chart_artifact_from_metroliza_payload(
+    payload: Mapping[str, Any],
+    *,
+    target: MetrolizaArtifactTarget,
+    theme: str | Mapping[str, Any] | None = None,
+    backend: MetrolizaArtifactBackend = "auto",
+    include_plotly: bool = True,
+    include_png: bool = False,
+    static: bool | None = None,
+) -> dict[str, Any]:
+    """Build a complete chart artifact from a Metroliza export payload.
+
+    The artifact is intentionally plain data so Metroliza can place it in HTML
+    dashboards, workbook images, or editable workbook chart data without owning
+    renderer-specific chart construction.
+    """
+
+    if not isinstance(payload, Mapping):
+        return _empty_artifact("unknown", "payload must be a mapping")
+
+    chart_type = _normalized_chart_type(payload)
+    artifact = _base_artifact(chart_type, target=target, backend="hexafe-plotstats")
+    static_mode = _default_static_mode(chart_type, target=target) if static is None else bool(static)
+
+    try:
+        if chart_type == "histogram":
+            artifact.update(
+                _histogram_artifact(
+                    payload,
+                    target=target,
+                    theme=theme,
+                    backend=backend,
+                    include_plotly=include_plotly,
+                    include_png=include_png,
+                    static=static_mode,
+                )
+            )
+        elif chart_type == "distribution":
+            artifact.update(
+                _distribution_artifact(
+                    payload,
+                    target=target,
+                    theme=theme,
+                    backend=backend,
+                    include_plotly=include_plotly,
+                    include_png=include_png,
+                    static=static_mode,
+                )
+            )
+        elif chart_type == "iqr":
+            artifact.update(
+                _iqr_artifact(
+                    payload,
+                    target=target,
+                    theme=theme,
+                    backend=backend,
+                    include_plotly=include_plotly,
+                    include_png=include_png,
+                    static=static_mode,
+                )
+            )
+        elif chart_type in {"trend", "time_series", "time_series_raw_aggregate"}:
+            artifact.update(
+                _scatter_like_artifact(
+                    payload,
+                    chart_type=chart_type,
+                    target=target,
+                    theme=theme,
+                    backend=backend,
+                    include_plotly=include_plotly,
+                    include_png=include_png,
+                )
+            )
+        else:
+            artifact["diagnostics"].append(f"unsupported chart type: {chart_type or 'unknown'}")
+    except Exception as exc:
+        artifact["diagnostics"].append(f"plotstats artifact failed: {exc}")
+
+    return artifact
+
+
 def plotly_spec_from_metroliza_dashboard_payload(
     payload: Mapping[str, Any],
     *,
@@ -71,44 +163,548 @@ def plotly_spec_from_metroliza_dashboard_payload(
     existing fallback renderer.
     """
 
-    chart_type = str(payload.get("type") or "").strip().lower()
-    if chart_type == "histogram":
-        histogram_payload_mapping = {
-            **dict(payload),
-            "title": title or payload.get("title") or "Histogram",
-        }
-        histogram = histogram_from_metroliza_native_payload(histogram_payload_mapping)
-        histogram = replace(histogram, metadata=_metadata_with_theme(histogram.metadata, theme))
-        return histogram_payload_to_plotly_spec(histogram, static=static)
+    payload_with_title = {**dict(payload), "title": title or payload.get("title") or ""}
+    artifact = chart_artifact_from_metroliza_payload(
+        payload_with_title,
+        target="html_dashboard",
+        theme=theme,
+        include_plotly=True,
+        include_png=False,
+        static=static,
+    )
+    spec = artifact.get("plotly_spec")
+    return spec if isinstance(spec, dict) else {}
 
-    if chart_type == "distribution":
-        render_mode = str(payload.get("render_mode") or "violin").strip().lower()
-        if render_mode != "violin":
-            return {}
-        groups = _groups_from_series_payload(payload)
-        if not groups:
-            return {}
-        violin = build_violin_payload(groups, spec_limits=_spec_limits_from_payload(payload))
-        violin = replace(violin, metadata=_metadata_with_theme(violin.metadata, theme))
-        spec = violin_payload_to_plotly_spec(violin, static=static)
-        _set_plotly_title(spec, title or str(payload.get("title") or "Violin"))
-        return spec
 
-    if chart_type == "iqr":
-        groups = _groups_from_series_payload(payload)
-        if not groups:
-            return {}
-        iqr = build_iqr_payload(
-            groups,
-            spec_limits=_spec_limits_from_payload(payload),
-            config=IQRConfig(showfliers=False),
+def _histogram_artifact(
+    payload: Mapping[str, Any],
+    *,
+    target: MetrolizaArtifactTarget,
+    theme: str | Mapping[str, Any] | None,
+    backend: MetrolizaArtifactBackend,
+    include_plotly: bool,
+    include_png: bool,
+    static: bool,
+) -> dict[str, Any]:
+    grouped = _groups_from_histogram_payload(payload)
+    if grouped:
+        return _grouped_histogram_artifact(
+            payload,
+            grouped,
+            target=target,
+            theme=theme,
+            include_plotly=include_plotly,
+            include_png=include_png,
+            static=static,
         )
-        iqr = replace(iqr, metadata=_metadata_with_theme(iqr.metadata, theme))
-        spec = iqr_payload_to_plotly_spec(iqr, static=static)
-        _set_plotly_title(spec, title or str(payload.get("title") or "IQR"))
-        return spec
 
-    return {}
+    histogram = histogram_from_metroliza_native_payload(payload)
+    histogram = replace(histogram, metadata=_metadata_with_theme(histogram.metadata, theme))
+    result = {
+        "stats_tables": [_stats_table_from_histogram_payload(histogram, title=_summary_title(payload))],
+        "payload_summary": _histogram_summary(histogram, payload),
+        "payload_details": _histogram_details(histogram, payload),
+        "excel_chart_data": _histogram_excel_chart_data(histogram, title=str(payload.get("title") or "")),
+    }
+    if include_plotly:
+        result["plotly_spec"] = histogram_payload_to_plotly_spec(histogram, static=static)
+    if include_png:
+        result["png_bytes"], result["backend"] = _render_png_bytes(
+            histogram,
+            chart_type="histogram",
+            backend=backend,
+        )
+    return result
+
+
+def _grouped_histogram_artifact(
+    payload: Mapping[str, Any],
+    groups: dict[str, Sequence[Any]],
+    *,
+    target: MetrolizaArtifactTarget,
+    theme: str | Mapping[str, Any] | None,
+    include_plotly: bool,
+    include_png: bool,
+    static: bool,
+) -> dict[str, Any]:
+    excel_data = _grouped_histogram_excel_data(payload, groups)
+    stats_tables = []
+    for label, values in groups.items():
+        group_payload = build_histogram_payload(
+            values,
+            _spec_limits_from_payload(payload),
+            config=HistogramConfig(bins=payload.get("bin_count") or "auto", density=False),
+            metadata={"title": str(payload.get("title") or ""), "theme": theme},
+        )
+        stats_tables.append(_stats_table_from_histogram_payload(group_payload, title=label))
+
+    result: dict[str, Any] = {
+        "stats_tables": stats_tables,
+        "payload_summary": {
+            "type": "histogram",
+            "group_count": len(groups),
+            "sample_count": sum(len(values) for values in groups.values()),
+            "bin_count": len(excel_data.get("bins") or ()),
+        },
+        "payload_details": {"groups": list(groups.keys())},
+        "excel_chart_data": excel_data,
+    }
+    if include_plotly:
+        result["plotly_spec"] = _grouped_histogram_plotly_spec(
+            payload,
+            groups,
+            excel_data=excel_data,
+            theme=theme,
+            static=static,
+        )
+    if include_png:
+        # A grouped histogram PNG is currently represented by the Plotly-ready
+        # artifact plus editable data; Metroliza can fall back to its legacy PNG
+        # path until the package grows a dedicated grouped PNG renderer.
+        result["diagnostics"] = ["grouped histogram PNG is not implemented in plotstats yet"]
+    return result
+
+
+def _distribution_artifact(
+    payload: Mapping[str, Any],
+    *,
+    target: MetrolizaArtifactTarget,
+    theme: str | Mapping[str, Any] | None,
+    backend: MetrolizaArtifactBackend,
+    include_plotly: bool,
+    include_png: bool,
+    static: bool,
+) -> dict[str, Any]:
+    render_mode = str(payload.get("render_mode") or "violin").strip().lower()
+    if render_mode == "scatter":
+        return _scatter_like_artifact(
+            payload,
+            chart_type="distribution",
+            target=target,
+            theme=theme,
+            backend=backend,
+            include_plotly=include_plotly,
+            include_png=include_png,
+        )
+
+    groups = _groups_from_series_payload(payload)
+    if not groups:
+        return _empty_artifact("distribution", "distribution payload contains no groups")
+    violin = build_violin_payload(groups, spec_limits=_spec_limits_from_payload(payload))
+    violin = replace(violin, metadata=_metadata_with_theme(violin.metadata, theme))
+    result: dict[str, Any] = {
+        "payload_summary": _grouped_series_summary("distribution", groups),
+        "payload_details": {"groups": list(groups.keys())},
+        "excel_chart_data": _series_excel_chart_data(groups),
+    }
+    if include_plotly:
+        spec = violin_payload_to_plotly_spec(violin, static=static)
+        _set_plotly_title(spec, str(payload.get("title") or "Violin"))
+        result["plotly_spec"] = spec
+    if include_png:
+        result["png_bytes"], result["backend"] = _render_png_bytes(
+            violin,
+            chart_type="distribution",
+            backend=backend,
+        )
+    return result
+
+
+def _iqr_artifact(
+    payload: Mapping[str, Any],
+    *,
+    target: MetrolizaArtifactTarget,
+    theme: str | Mapping[str, Any] | None,
+    backend: MetrolizaArtifactBackend,
+    include_plotly: bool,
+    include_png: bool,
+    static: bool,
+) -> dict[str, Any]:
+    groups = _groups_from_series_payload(payload)
+    if not groups:
+        return _empty_artifact("iqr", "iqr payload contains no groups")
+    iqr = build_iqr_payload(
+        groups,
+        spec_limits=_spec_limits_from_payload(payload),
+        config=IQRConfig(showfliers=False),
+    )
+    iqr = replace(iqr, metadata=_metadata_with_theme(iqr.metadata, theme))
+    result: dict[str, Any] = {
+        "payload_summary": _grouped_series_summary("iqr", groups),
+        "payload_details": {"groups": list(groups.keys())},
+        "excel_chart_data": _series_excel_chart_data(groups),
+    }
+    if include_plotly:
+        spec = iqr_payload_to_plotly_spec(iqr, static=static)
+        _set_plotly_title(spec, str(payload.get("title") or "IQR"))
+        result["plotly_spec"] = spec
+    if include_png:
+        result["png_bytes"], result["backend"] = _render_png_bytes(
+            iqr,
+            chart_type="iqr",
+            backend=backend,
+        )
+    return result
+
+
+def _scatter_like_artifact(
+    payload: Mapping[str, Any],
+    *,
+    chart_type: str,
+    target: MetrolizaArtifactTarget,
+    theme: str | Mapping[str, Any] | None,
+    backend: MetrolizaArtifactBackend,
+    include_plotly: bool,
+    include_png: bool,
+) -> dict[str, Any]:
+    if isinstance(payload.get("traces"), Sequence):
+        spec = _trace_payload_to_plotly_spec(payload, theme=theme)
+        return {
+            "plotly_spec": spec if include_plotly else {},
+            "payload_summary": {
+                "type": chart_type,
+                "trace_count": len(payload.get("traces") or ()),
+            },
+            "payload_details": {},
+            "excel_chart_data": _trace_excel_chart_data(payload),
+        }
+
+    x_values = payload.get("x_values") or payload.get("x") or []
+    y_values = payload.get("y_values") or payload.get("y") or []
+    scatter = build_scatter_payload(
+        x_values,
+        y_values,
+        config=ScatterConfig(include_trend=chart_type == "trend"),
+        metadata={"title": str(payload.get("title") or ""), "theme": theme},
+    )
+    result: dict[str, Any] = {
+        "payload_summary": {
+            "type": chart_type,
+            "point_count": len(scatter.x),
+            "data_policy": scatter.metadata.get("finite_point_count"),
+        },
+        "payload_details": {},
+        "excel_chart_data": {
+            "series": [
+                {
+                    "name": str(payload.get("title") or chart_type),
+                    "x": list(scatter.x),
+                    "y": list(scatter.y),
+                }
+            ]
+        },
+    }
+    if include_plotly:
+        spec = scatter_payload_to_plotly_spec(scatter)
+        _decorate_scatter_layout(spec, payload, chart_type=chart_type, theme=theme)
+        result["plotly_spec"] = spec
+    if include_png:
+        result["png_bytes"], result["backend"] = _render_png_bytes(
+            scatter,
+            chart_type="scatter",
+            backend=backend,
+        )
+    return result
+
+
+def _render_png_bytes(payload: Any, *, chart_type: str, backend: MetrolizaArtifactBackend) -> tuple[bytes, str]:
+    preferred_backend = "rust" if backend == "rust" and renderer_backend_available("rust") else "matplotlib"
+    renderers = {
+        "histogram": render_histogram,
+        "distribution": render_violin,
+        "iqr": render_iqr,
+        "scatter": render_scatter,
+    }
+    renderer = renderers[chart_type]
+    result = renderer(payload, backend=preferred_backend)  # type: ignore[arg-type]
+    if hasattr(result, "png_bytes"):
+        return bytes(result.png_bytes), f"hexafe-plotstats:{preferred_backend}"
+    fig = result.fig
+    buffer = BytesIO()
+    try:
+        fig.savefig(buffer, format="png", dpi=150)
+        return buffer.getvalue(), "hexafe-plotstats:matplotlib"
+    finally:
+        if hasattr(fig, "clf"):
+            fig.clf()
+
+
+def _normalized_chart_type(payload: Mapping[str, Any]) -> str:
+    chart_type = str(payload.get("type") or payload.get("chart_type") or "").strip().lower()
+    if chart_type == "box":
+        return "iqr"
+    return chart_type
+
+
+def _base_artifact(chart_type: str, *, target: str, backend: str) -> dict[str, Any]:
+    return {
+        "chart_type": chart_type,
+        "target": target,
+        "backend": backend,
+        "plotly_spec": {},
+        "png_bytes": None,
+        "excel_chart_data": {},
+        "stats_tables": [],
+        "payload_summary": {},
+        "payload_details": {},
+        "notes": [],
+        "diagnostics": [],
+        "metadata": {},
+    }
+
+
+def _empty_artifact(chart_type: str, message: str) -> dict[str, Any]:
+    artifact = _base_artifact(chart_type, target="", backend="hexafe-plotstats")
+    artifact["diagnostics"].append(message)
+    return artifact
+
+
+def _default_static_mode(chart_type: str, *, target: str) -> bool:
+    if chart_type in {"trend", "time_series", "time_series_raw_aggregate"}:
+        return False
+    return target != "html_dashboard_interactive"
+
+
+def _groups_from_histogram_payload(payload: Mapping[str, Any]) -> dict[str, Sequence[Any]]:
+    groups = payload.get("groups")
+    if not isinstance(groups, Sequence) or isinstance(groups, (str, bytes)):
+        return {}
+    output: dict[str, Sequence[Any]] = {}
+    for index, raw in enumerate(groups, start=1):
+        if not isinstance(raw, Mapping):
+            continue
+        label = str(raw.get("group") or raw.get("label") or f"Group {index}")
+        values = raw.get("values") or raw.get("series") or []
+        if isinstance(values, Sequence) and not isinstance(values, (str, bytes)):
+            output[label] = values
+        elif isinstance(values, Iterable):
+            output[label] = tuple(values)
+    return output
+
+
+def _stats_table_from_histogram_payload(payload: HistogramPayload, *, title: str) -> dict[str, Any]:
+    return {
+        "title": title,
+        "backend": "hexafe-plotstats",
+        "rows": [{"label": row.label, "value": row.value} for row in payload.table_rows],
+    }
+
+
+def _summary_title(payload: Mapping[str, Any]) -> str:
+    visual = payload.get("visual_metadata") if isinstance(payload.get("visual_metadata"), Mapping) else {}
+    table = visual.get("summary_stats_table") if isinstance(visual.get("summary_stats_table"), Mapping) else {}
+    return str(table.get("title") or payload.get("summary_table_title") or "Parameter")
+
+
+def _histogram_summary(payload: HistogramPayload, raw: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "histogram",
+        "sample_count": payload.summary.count,
+        "bin_count": max(len(payload.bin_edges) - 1, 0),
+        "limits": {
+            "lsl": payload.spec_limits.lsl,
+            "nominal": payload.spec_limits.nominal,
+            "usl": payload.spec_limits.usl,
+        },
+        "summary_row_count": len(payload.table_rows),
+        "title": str(raw.get("title") or payload.metadata.get("title") or ""),
+    }
+
+
+def _histogram_details(payload: HistogramPayload, raw: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "summary_stats_table": _stats_table_from_histogram_payload(payload, title=_summary_title(raw)),
+        "warnings": list(payload.warnings),
+    }
+
+
+def _histogram_excel_chart_data(payload: HistogramPayload, *, title: str) -> dict[str, Any]:
+    bins = []
+    for index, value in enumerate(payload.bin_values):
+        if index + 1 >= len(payload.bin_edges):
+            break
+        bins.append(
+            {
+                "label": f"{payload.bin_edges[index]:.3g} - {payload.bin_edges[index + 1]:.3g}",
+                "start": float(payload.bin_edges[index]),
+                "end": float(payload.bin_edges[index + 1]),
+                "value": float(value),
+            }
+        )
+    return {"title": title, "bins": bins, "series": [{"name": title or "Histogram", "values": bins}]}
+
+
+def _grouped_histogram_excel_data(
+    payload: Mapping[str, Any],
+    groups: dict[str, Sequence[Any]],
+) -> dict[str, Any]:
+    import numpy as np
+
+    all_values = [float(value) for values in groups.values() for value in values]
+    if not all_values:
+        return {"bins": [], "series": []}
+    bin_count = payload.get("bin_count")
+    try:
+        bins = max(1, int(bin_count))
+    except (TypeError, ValueError):
+        bins = "auto"  # type: ignore[assignment]
+    counts, edges = np.histogram(all_values, bins=bins)
+    labels = [f"{edges[index]:.3g} - {edges[index + 1]:.3g}" for index in range(len(edges) - 1)]
+    series = []
+    for label, values in groups.items():
+        group_counts, _ = np.histogram([float(value) for value in values], bins=edges)
+        total = float(np.sum(group_counts))
+        series.append(
+            {
+                "name": label,
+                "values": [
+                    {
+                        "label": bin_label,
+                        "count": int(count),
+                        "share": float(count) / total if total > 0 else 0.0,
+                    }
+                    for bin_label, count in zip(labels, group_counts, strict=False)
+                ],
+            }
+        )
+    return {
+        "bins": [{"label": label, "start": float(edges[i]), "end": float(edges[i + 1])} for i, label in enumerate(labels)],
+        "series": series,
+        "total_counts": [int(value) for value in counts],
+    }
+
+
+def _grouped_histogram_plotly_spec(
+    payload: Mapping[str, Any],
+    groups: dict[str, Sequence[Any]],
+    *,
+    excel_data: Mapping[str, Any],
+    theme: str | Mapping[str, Any] | None,
+    static: bool,
+) -> dict[str, Any]:
+    traces = []
+    for group in excel_data.get("series") or []:
+        values = group.get("values") if isinstance(group, Mapping) else []
+        traces.append(
+            {
+                "type": "bar",
+                "name": str(group.get("name") or "Group"),
+                "x": [row["label"] for row in values],
+                "y": [row["share"] for row in values],
+                "customdata": [[row["count"]] for row in values],
+                "hovertemplate": "%{x}<br>share=%{y:.2%}<br>count=%{customdata[0]}<extra></extra>",
+            }
+        )
+    return {
+        "data": traces,
+        "layout": {
+            "title": {"text": str(payload.get("title") or "Grouped histogram")},
+            "barmode": "overlay",
+            "yaxis": {"tickformat": ".0%", "title": {"text": "Share of group"}},
+            "xaxis": {"title": {"text": "Measurement"}},
+            "meta": {"theme": theme, "data_policy": "grouped_histogram_bins"},
+        },
+        "config": {"responsive": True, "staticPlot": static, "displaylogo": False},
+        "metadata": {
+            "kind": "histogram",
+            "backend": "plotly",
+            "group_count": len(groups),
+            "data_policy": "grouped_histogram_bins",
+            "interactive_enabled": not static,
+            "theme": theme,
+        },
+    }
+
+
+def _grouped_series_summary(chart_type: str, groups: Mapping[str, Sequence[Any]]) -> dict[str, Any]:
+    return {
+        "type": chart_type,
+        "group_count": len(groups),
+        "series_sizes": [len(values) for values in groups.values()],
+        "sample_count": sum(len(values) for values in groups.values()),
+    }
+
+
+def _series_excel_chart_data(groups: Mapping[str, Sequence[Any]]) -> dict[str, Any]:
+    return {
+        "series": [
+            {"name": label, "values": [float(value) for value in values]}
+            for label, values in groups.items()
+        ]
+    }
+
+
+def _trace_excel_chart_data(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "series": [
+            {
+                "name": str(trace.get("name") or f"Series {index}"),
+                "x": list(trace.get("x") or []),
+                "y": list(trace.get("y") or []),
+            }
+            for index, trace in enumerate(payload.get("traces") or (), start=1)
+            if isinstance(trace, Mapping)
+        ]
+    }
+
+
+def _trace_payload_to_plotly_spec(
+    payload: Mapping[str, Any],
+    *,
+    theme: str | Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    layout = dict(payload.get("layout") or {}) if isinstance(payload.get("layout"), Mapping) else {}
+    layout.setdefault("title", {"text": str(payload.get("title") or "")})
+    layout.setdefault("meta", {})["theme"] = theme
+    return {
+        "data": [dict(trace) for trace in payload.get("traces") or () if isinstance(trace, Mapping)],
+        "layout": layout,
+        "config": {"responsive": True, "displaylogo": False, "scrollZoom": False},
+        "metadata": {
+            "kind": _normalized_chart_type(payload),
+            "backend": "plotly",
+            "trace_count": len(payload.get("traces") or ()),
+            "theme": theme,
+        },
+    }
+
+
+def _decorate_scatter_layout(
+    spec: dict[str, Any],
+    payload: Mapping[str, Any],
+    *,
+    chart_type: str,
+    theme: str | Mapping[str, Any] | None,
+) -> None:
+    metadata = spec.setdefault("metadata", {})
+    metadata.setdefault("kind", "scatter")
+    metadata.setdefault("chart_type", chart_type)
+    metadata.setdefault("theme", theme)
+    layout = spec.setdefault("layout", {})
+    layout.setdefault("title", {"text": str(payload.get("title") or chart_type)})
+    layout.setdefault("xaxis", {}).setdefault("title", {"text": str(payload.get("x_label") or "X")})
+    layout.setdefault("yaxis", {}).setdefault("title", {"text": str(payload.get("y_label") or "Measurement")})
+    layout.setdefault("meta", {})["theme"] = theme
+    horizontal_limits = payload.get("horizontal_limits") or []
+    shapes = list(layout.get("shapes") or [])
+    for value in horizontal_limits:
+        number = _coerce_float(value)
+        if number is None:
+            continue
+        shapes.append(
+            {
+                "type": "line",
+                "xref": "paper",
+                "yref": "y",
+                "x0": 0,
+                "x1": 1,
+                "y0": number,
+                "y1": number,
+                "line": {"color": "#B45309", "width": 2, "dash": "dash"},
+            }
+        )
+    if shapes:
+        layout["shapes"] = shapes
 
 
 def _metadata_with_theme(metadata: Mapping[str, Any], theme: str | Mapping[str, Any] | None) -> dict[str, Any]:

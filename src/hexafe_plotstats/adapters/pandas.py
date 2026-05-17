@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from typing import Any
 
 from ._core import capability, histogram_payload, paired_finite_arrays, scatter_payload, summarize, violin_payload

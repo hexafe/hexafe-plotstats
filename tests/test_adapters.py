@@ -12,6 +12,7 @@ matplotlib.use("Agg", force=True)
 
 from hexafe_plotstats.adapters import (
     capability,
+    chart_artifact_from_metroliza_payload,
     fit_distribution,
     histogram_from_metroliza_native_payload,
     histogram_payload,
@@ -241,6 +242,75 @@ def test_metroliza_dashboard_payload_adapter_builds_static_plotly_specs() -> Non
     assert all(trace.get("meta", {}).get("contains_raw_points") is not True for trace in violin_spec["data"])
     assert iqr_spec["metadata"]["kind"] == "iqr"
     assert iqr_spec["config"]["staticPlot"] is True
+
+
+def test_metroliza_chart_artifact_builds_histogram_plotly_png_and_stats() -> None:
+    artifact = chart_artifact_from_metroliza_payload(
+        {
+            "type": "histogram",
+            "title": "Diameter distribution",
+            "values": [9.8, 10.0, 10.2, 10.1, 9.9],
+            "limits": {"lsl": 9.5, "nominal": 10.0, "usl": 10.5},
+        },
+        target="workbook_image",
+        include_plotly=True,
+        include_png=True,
+    )
+
+    assert artifact["chart_type"] == "histogram"
+    assert artifact["backend"] == "hexafe-plotstats:matplotlib"
+    assert artifact["plotly_spec"]["metadata"]["kind"] == "histogram"
+    assert artifact["png_bytes"].startswith(b"\x89PNG")
+    assert artifact["stats_tables"][0]["backend"] == "hexafe-plotstats"
+    assert artifact["payload_summary"]["sample_count"] == 5
+
+
+def test_metroliza_chart_artifact_builds_grouped_histogram_spec_and_excel_data() -> None:
+    artifact = chart_artifact_from_metroliza_payload(
+        {
+            "type": "histogram",
+            "title": "Grouped diameter",
+            "groups": [
+                {"group": "A", "values": [1.0, 1.2, 1.4]},
+                {"group": "B", "values": [2.0, 2.2, 2.4]},
+            ],
+            "limits": {"lsl": 0.5, "nominal": 1.5, "usl": 2.8},
+        },
+        target="html_dashboard",
+        include_plotly=True,
+    )
+
+    assert artifact["plotly_spec"]["metadata"]["data_policy"] == "grouped_histogram_bins"
+    assert [trace["name"] for trace in artifact["plotly_spec"]["data"]] == ["A", "B"]
+    assert len(artifact["excel_chart_data"]["series"]) == 2
+    assert artifact["payload_summary"]["group_count"] == 2
+
+
+def test_metroliza_chart_artifact_builds_trend_and_trace_payload_specs() -> None:
+    trend_artifact = chart_artifact_from_metroliza_payload(
+        {
+            "type": "trend",
+            "title": "Diameter trend",
+            "x_values": [1, 2, 3],
+            "y_values": [10.0, 10.1, 10.2],
+            "horizontal_limits": [9.5, 10.5],
+        },
+        target="html_dashboard",
+        include_plotly=True,
+    )
+    time_series_artifact = chart_artifact_from_metroliza_payload(
+        {
+            "type": "time_series",
+            "title": "Process values",
+            "traces": [{"type": "scatter", "mode": "markers", "name": "Line A", "x": [1], "y": [2]}],
+        },
+        target="html_dashboard",
+        include_plotly=True,
+    )
+
+    assert trend_artifact["plotly_spec"]["metadata"]["kind"] == "scatter"
+    assert trend_artifact["plotly_spec"]["layout"]["shapes"]
+    assert time_series_artifact["plotly_spec"]["metadata"]["trace_count"] == 1
 
 
 def test_renderer_backend_default_behavior_stays_matplotlib_first() -> None:

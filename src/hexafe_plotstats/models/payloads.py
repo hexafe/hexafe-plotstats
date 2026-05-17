@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .common import SpecLimits
-from .fits import CurvePayload, DistributionFitResult
+from .fits import DistributionFitResult
 from .summaries import CapabilitySummary, DistributionSummary, NormalitySummary
 
 
