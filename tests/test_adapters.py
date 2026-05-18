@@ -367,6 +367,14 @@ def test_metroliza_chart_artifact_builds_grouped_histogram_spec_and_excel_data()
     }
     assert group_shares == {"A": pytest.approx(1.0), "B": pytest.approx(1.0)}
     assert [trace["name"] for trace in artifact["plotly_spec"]["data"]] == ["A", "B"]
+    first_trace = artifact["plotly_spec"]["data"][0]
+    assert all(isinstance(value, float) for value in first_trace["x"])
+    assert " - " not in str(first_trace["x"][0])
+    assert first_trace["width"][0] > 0
+    assert first_trace["customdata"][0][0] < first_trace["customdata"][0][1]
+    assert "bin=%{customdata[0]:.4g}..%{customdata[1]:.4g}" in first_trace["hovertemplate"]
+    assert artifact["plotly_spec"]["layout"]["xaxis"]["tickformat"] == ".4~g"
+    assert artifact["plotly_spec"]["layout"]["yaxis"]["range"] == [0.0, 1.0]
     assert len(artifact["excel_chart_data"]["series"]) == 2
     assert artifact["payload_summary"]["group_count"] == 2
 
@@ -404,7 +412,12 @@ def test_metroliza_chart_artifact_builds_trend_and_trace_payload_specs() -> None
         for trace in trend_artifact["plotly_spec"]["data"]
         if str(trace.get("meta", {}).get("kind", "")).startswith("reference_")
     }
-    assert {"LSL", "USL", "Mean"}.issubset(reference_names)
+    assert {"LSL=9.5", "USL=10.5", "Mean=10.1"}.issubset(reference_names)
+    annotations = trend_artifact["plotly_spec"]["layout"]["annotations"]
+    assert {"LSL=9.5", "USL=10.5", "Mean=10.1"}.issubset(
+        {annotation["text"] for annotation in annotations}
+    )
+    assert all(annotation["bgcolor"] == "#ffffff" for annotation in annotations)
     assert any(
         trace.get("meta", {}).get("kind") == "trend" and trace["opacity"] <= 0.35
         for trace in trend_artifact["plotly_spec"]["data"]

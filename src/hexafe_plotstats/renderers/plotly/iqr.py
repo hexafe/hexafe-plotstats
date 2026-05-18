@@ -5,7 +5,14 @@ from typing import Any
 from ...models.payloads import IQRPayload
 from ...models.render import RenderResult
 from ...specs import iqr_payload_to_resolved_spec, to_mapping
-from ._common import line_trace, plotly_config, require_plotly_graph_objects, resolved_layout
+from ._common import (
+    format_compact_number,
+    line_trace,
+    plotly_config,
+    reference_annotation,
+    require_plotly_graph_objects,
+    resolved_layout,
+)
 
 
 def iqr_payload_to_plotly_spec(payload: IQRPayload, *, static: bool = True) -> dict[str, Any]:
@@ -31,6 +38,7 @@ def iqr_payload_to_plotly_spec(payload: IQRPayload, *, static: bool = True) -> d
 
     layout = resolved_layout(resolved, metadata)
     layout["boxmode"] = "group"
+    layout["annotations"] = _reference_annotations(resolved)
     return {"data": traces, "layout": layout, "config": plotly_config(static=static), "metadata": metadata, "resolved": resolved}
 
 
@@ -42,9 +50,17 @@ def render_iqr_plotly(payload: IQRPayload, *, static: bool = True) -> RenderResu
 
 
 def _box_trace(boxes: list[dict[str, Any]]) -> dict[str, Any]:
+    name = "IQR"
+    if len(boxes) == 1:
+        box = boxes[0]
+        name = (
+            f"Q1={format_compact_number(float(box['q1']))} "
+            f"Median={format_compact_number(float(box['median']))} "
+            f"Q3={format_compact_number(float(box['q3']))}"
+        )
     return {
         "type": "box",
-        "name": "IQR",
+        "name": name,
         "legendgroup": "iqr",
         "x": [box["position"] for box in boxes],
         "q1": [box["q1"] for box in boxes],
@@ -84,6 +100,17 @@ def _box_trace(boxes: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _reference_annotations(resolved: dict[str, Any]) -> list[dict[str, Any]]:
+    annotations: list[dict[str, Any]] = []
+    for line in resolved.get("spec_lines") or ():
+        if not isinstance(line, dict):
+            continue
+        annotation = reference_annotation(line, axis="y")
+        if annotation is not None:
+            annotations.append(annotation)
+    return annotations
+
+
 def _annotation_marker_traces(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for marker in markers:
@@ -93,6 +120,8 @@ def _annotation_marker_traces(markers: list[dict[str, Any]]) -> list[dict[str, A
 
 def _annotation_marker_trace(kind: str, markers: list[dict[str, Any]]) -> dict[str, Any]:
     label = {"mean": "Mean", "minimum": "Minimum", "maximum": "Maximum"}.get(kind, kind.title())
+    if len(markers) == 1 and kind in {"mean", "median", "q1", "q3"}:
+        label = f"{label}={format_compact_number(float(markers[0]['y']))}"
     symbol = "diamond" if kind == "mean" else "line-ew"
     color = markers[0].get("fill") or markers[0].get("stroke") or "#111827"
     return {

@@ -10,7 +10,7 @@ from ...models.payloads import ScatterPayload
 from ...models.render import RenderResult
 from ...specs import scatter_payload_to_resolved_spec, to_mapping
 from ..base import RendererBackendUnavailable
-from ._common import line_trace, plotly_config, resolved_layout
+from ._common import line_trace, plotly_config, reference_annotation, resolved_layout
 
 _LARGE_PLOTLY_SCATTER_THRESHOLD = 50_000
 _STATIC_RASTER_BINS = 192
@@ -87,6 +87,7 @@ def _large_scatter_plotly_spec(payload: ScatterPayload, *, target_interactive_po
         data.append(trend_trace)
     data.extend(_reference_line_traces(resolved))
     layout = resolved_layout(resolved, metadata)
+    layout["annotations"] = _reference_annotations(resolved)
 
     return {
         "data": data,
@@ -123,7 +124,10 @@ def _raw_scatter_plotly_spec(payload: ScatterPayload) -> dict[str, Any]:
     data.extend(_reference_line_traces(resolved))
     return {
         "data": data,
-        "layout": resolved_layout(resolved, metadata),
+        "layout": {
+            **resolved_layout(resolved, metadata),
+            "annotations": _reference_annotations(resolved),
+        },
         "config": plotly_config(static=False),
         "metadata": metadata,
     }
@@ -168,6 +172,17 @@ def _trend_trace_from_resolved(resolved: dict[str, Any]) -> dict[str, Any] | Non
 
 def _reference_line_traces(resolved: dict[str, Any]) -> list[dict[str, Any]]:
     return [line_trace(line) for line in resolved.get("reference_lines") or () if isinstance(line, dict)]
+
+
+def _reference_annotations(resolved: dict[str, Any]) -> list[dict[str, Any]]:
+    annotations: list[dict[str, Any]] = []
+    for line in resolved.get("reference_lines") or ():
+        if not isinstance(line, dict):
+            continue
+        annotation = reference_annotation(line, axis="y")
+        if annotation is not None:
+            annotations.append(annotation)
+    return annotations
 
 
 def _hexbin_trace(resolved: dict[str, Any]) -> dict[str, Any]:

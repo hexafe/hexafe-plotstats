@@ -408,7 +408,9 @@ def test_histogram_plotly_spec_preserves_bars_limits_and_table() -> None:
     traces_by_type = {trace["type"]: trace for trace in spec["data"]}
     assert traces_by_type["bar"]["name"] == "Histogram"
     assert len(traces_by_type["bar"]["x"]) == len(payload.bin_values)
-    assert any(trace.get("name") == "LSL" for trace in spec["data"])
+    assert any(trace.get("name") == "LSL=0.5" for trace in spec["data"])
+    assert any(annotation["text"] == "LSL=0.5" for annotation in spec["layout"]["annotations"])
+    assert all(annotation["bgcolor"] == "#ffffff" for annotation in spec["layout"]["annotations"])
     assert any(trace.get("type") == "table" and trace["meta"]["row_count"] >= 3 for trace in spec["data"])
 
 
@@ -428,8 +430,16 @@ def test_iqr_plotly_spec_uses_resolved_box_statistics() -> None:
     assert len(box_trace["q1"]) == 2
     assert "y" not in box_trace
     assert "whisker low=%{customdata[5]}" in box_trace["hovertemplate"]
-    assert any(trace.get("name") == "Mean" for trace in spec["data"])
-    assert any(trace.get("name") == "Outliers" for trace in spec["data"])
+
+
+def test_iqr_plotly_single_group_legend_includes_quartile_values() -> None:
+    payload = build_iqr_payload({"A": [1, 2, 3, 4, 5]})
+
+    spec = iqr_payload_to_plotly_spec(payload)
+
+    box_trace = next(trace for trace in spec["data"] if trace["type"] == "box")
+    assert box_trace["name"] == "Q1=2 Median=3 Q3=4"
+    assert any(trace.get("name") == "Mean=3" for trace in spec["data"])
 
 
 def test_violin_plotly_spec_uses_resolved_body_polygons() -> None:
@@ -493,9 +503,13 @@ def test_histogram_plotly_spec_can_normalize_dashboard_frequency() -> None:
     assert spec["metadata"]["histogram_y_mode"] == "relative_percent"
     assert spec["layout"]["yaxis"]["title"]["text"] == "Frequency (%)"
     assert spec["layout"]["yaxis"]["tickformat"] == ".0%"
-    assert spec["layout"]["yaxis"]["range"][1] <= 1.0
+    assert "tickvals" not in spec["layout"]["yaxis"]
+    assert "ticktext" not in spec["layout"]["yaxis"]
+    assert spec["layout"]["yaxis"]["range"] == [0.0, 1.0]
     assert sum(bar_trace["y"]) == pytest.approx(1.0)
     assert "frequency=%{customdata[3]:.2%}" in bar_trace["hovertemplate"]
+    assert any(trace.get("name") == "Mean=1.75" for trace in spec["data"])
+    assert any(annotation["text"] == "Mean=1.75" for annotation in spec["layout"]["annotations"])
 
 
 def test_histogram_plotly_relative_frequency_uses_counts_for_density_payloads() -> None:
@@ -509,7 +523,7 @@ def test_histogram_plotly_relative_frequency_uses_counts_for_density_payloads() 
     bar_trace = next(trace for trace in spec["data"] if trace["type"] == "bar")
 
     assert max(bar_trace["y"]) == pytest.approx(0.6)
-    assert spec["layout"]["yaxis"]["range"][1] < 0.8
+    assert spec["layout"]["yaxis"]["range"] == [0.0, 1.0]
 
 
 def test_histogram_plotly_relative_frequency_scales_curves_by_bin_width() -> None:
@@ -610,7 +624,9 @@ def test_scatter_plotly_spec_renders_subtle_trend_when_enabled() -> None:
     assert trend_trace["opacity"] <= 0.35
     assert spec["layout"]["xaxis"]["title"]["text"] == "Datetime"
     assert spec["layout"]["yaxis"]["title"]["text"] == "Diameter"
-    assert {"LSL", "USL"}.issubset(reference_names)
+    assert {"LSL=1.5", "USL=8.5"}.issubset(reference_names)
+    assert any(annotation["text"] == "LSL=1.5" for annotation in spec["layout"]["annotations"])
+    assert all(annotation["bgcolor"] == "#ffffff" for annotation in spec["layout"]["annotations"])
 
 
 def test_iqr_and_violin_matplotlib_annotations_use_white_bbox_and_high_zorder() -> None:

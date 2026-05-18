@@ -57,11 +57,15 @@ def axis_by_orientation(resolved: dict[str, Any], orientation: str) -> dict[str,
     return {}
 
 
+_VALUE_LEGEND_LABELS = {"lsl", "usl", "mean", "median", "q1", "q3"}
+
+
 def line_trace(line: dict[str, Any], *, showlegend: bool = True) -> dict[str, Any]:
+    label = str(line.get("label") or line.get("kind") or "line")
     return {
         "type": "scatter",
         "mode": "lines",
-        "name": line.get("label") or line.get("kind") or "line",
+        "name": value_label(label, line_value(line)),
         "legendgroup": line.get("kind") or line.get("label") or "line",
         "showlegend": showlegend,
         "x": [line.get("x0"), line.get("x1")],
@@ -74,6 +78,60 @@ def line_trace(line: dict[str, Any], *, showlegend: bool = True) -> dict[str, An
         "hovertemplate": f"{line.get('label') or 'line'}<extra></extra>",
         "meta": {"kind": line.get("kind")},
     }
+
+
+def reference_annotation(line: dict[str, Any], *, axis: str) -> dict[str, Any] | None:
+    label = str(line.get("label") or line.get("kind") or "").strip()
+    if label.strip().casefold() not in _VALUE_LEGEND_LABELS:
+        return None
+    value = line_value(line)
+    if value is None:
+        return None
+    color = str(line.get("stroke") or "#111827")
+    annotation: dict[str, Any] = {
+        "text": value_label(label, value),
+        "showarrow": False,
+        "font": {"size": 11, "color": color},
+        "bgcolor": "#ffffff",
+        "bordercolor": "#cbd5e1",
+        "borderwidth": 1,
+        "borderpad": 3,
+        "opacity": 1.0,
+    }
+    if axis == "x":
+        annotation.update({"xref": "x", "yref": "paper", "x": value, "y": 1.04, "yanchor": "bottom"})
+    else:
+        annotation.update({"xref": "paper", "yref": "y", "x": 1.0, "y": value, "xanchor": "right"})
+    return annotation
+
+
+def value_label(label: str, value: float | None) -> str:
+    clean_label = str(label or "").strip()
+    if value is None or clean_label.casefold() not in _VALUE_LEGEND_LABELS:
+        return clean_label
+    return f"{clean_label}={format_compact_number(value)}"
+
+
+def line_value(line: dict[str, Any]) -> float | None:
+    for first, second in (("x0", "x1"), ("y0", "y1")):
+        try:
+            left = float(line.get(first))
+            right = float(line.get(second))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(left) and math.isfinite(right) and math.isclose(left, right):
+            return left
+    return None
+
+
+def format_compact_number(value: float) -> str:
+    if not math.isfinite(value):
+        return str(value)
+    magnitude = abs(value)
+    if magnitude >= 10_000 or (0.0 < magnitude < 0.001):
+        return f"{value:.4g}"
+    text = f"{value:.6f}".rstrip("0").rstrip(".")
+    return "0" if text in {"-0", ""} else text
 
 
 def dash_name(dash: Any) -> str:

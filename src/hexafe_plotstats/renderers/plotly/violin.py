@@ -6,7 +6,15 @@ from typing import Any
 from ...models.payloads import ViolinPayload
 from ...models.render import RenderResult
 from ...specs import to_mapping, violin_payload_to_resolved_spec
-from ._common import line_trace, plotly_config, require_plotly_graph_objects, resolved_layout, rgba
+from ._common import (
+    format_compact_number,
+    line_trace,
+    plotly_config,
+    reference_annotation,
+    require_plotly_graph_objects,
+    resolved_layout,
+    rgba,
+)
 
 
 def violin_payload_to_plotly_spec(payload: ViolinPayload, *, static: bool = True) -> dict[str, Any]:
@@ -28,6 +36,7 @@ def violin_payload_to_plotly_spec(payload: ViolinPayload, *, static: bool = True
 
     layout = resolved_layout(resolved, metadata)
     layout["showlegend"] = True
+    layout["annotations"] = _reference_annotations(resolved)
     return {"data": traces, "layout": layout, "config": plotly_config(static=static), "metadata": metadata, "resolved": resolved}
 
 
@@ -60,6 +69,17 @@ def _body_trace(group: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _reference_annotations(resolved: dict[str, Any]) -> list[dict[str, Any]]:
+    annotations: list[dict[str, Any]] = []
+    for line in resolved.get("spec_lines") or ():
+        if not isinstance(line, dict):
+            continue
+        annotation = reference_annotation(line, axis="y")
+        if annotation is not None:
+            annotations.append(annotation)
+    return annotations
+
+
 def _marker_traces(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for marker in markers:
@@ -67,11 +87,14 @@ def _marker_traces(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     traces: list[dict[str, Any]] = []
     for kind, items in grouped.items():
+        label = kind.replace("_", " ").title()
+        if len(items) == 1 and kind in {"mean", "median", "q1", "q3"}:
+            label = f"{label}={format_compact_number(float(items[0]['y']))}"
         traces.append(
             {
                 "type": "scatter",
                 "mode": "markers",
-                "name": kind.replace("_", " ").title(),
+                "name": label,
                 "legendgroup": f"violin_marker_{kind}",
                 "x": [marker["x"] for marker in items],
                 "y": [marker["y"] for marker in items],

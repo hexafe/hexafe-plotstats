@@ -8,7 +8,15 @@ import numpy as np
 from ...models.payloads import HistogramPayload
 from ...models.render import RenderResult
 from ...specs import histogram_payload_to_resolved_spec, to_mapping
-from ._common import dash_name, line_trace, plotly_config, require_plotly_graph_objects, resolved_layout, rgba
+from ._common import (
+    dash_name,
+    line_trace,
+    plotly_config,
+    reference_annotation,
+    require_plotly_graph_objects,
+    resolved_layout,
+    rgba,
+)
 
 
 def histogram_payload_to_plotly_spec(payload: HistogramPayload, *, static: bool = True) -> dict[str, Any]:
@@ -43,10 +51,13 @@ def histogram_payload_to_plotly_spec(payload: HistogramPayload, *, static: bool 
             **layout["yaxis"],
             "title": {"text": "Frequency (%)"},
             "tickformat": ".0%",
-            "range": [0.0, _relative_y_axis_top(traces)],
+            "range": [0.0, 1.0],
         }
+        for key in ("tickmode", "tickvals", "ticktext", "nticks"):
+            layout["yaxis"].pop(key, None)
     if static and resolved.get("table") is not None:
         layout["xaxis"] = {**layout["xaxis"], "domain": [0.0, 0.72]}
+    layout["annotations"] = _reference_annotations(resolved)
     layout["barmode"] = "overlay"
     return {"data": traces, "layout": layout, "config": plotly_config(static=static), "metadata": metadata, "resolved": resolved}
 
@@ -165,6 +176,17 @@ def _relative_y_axis_top(traces: list[dict[str, Any]]) -> float:
     if not values:
         return 1.0
     return min(max(max(values) * 1.16, 0.05), 1.0)
+
+
+def _reference_annotations(resolved: dict[str, Any]) -> list[dict[str, Any]]:
+    annotations: list[dict[str, Any]] = []
+    for line in list(resolved.get("spec_lines") or ()) + [resolved.get("mean_line")]:
+        if not isinstance(line, dict):
+            continue
+        annotation = reference_annotation(line, axis="x")
+        if annotation is not None:
+            annotations.append(annotation)
+    return annotations
 
 
 def _curve_trace(curve: dict[str, Any], *, y_scale: float = 1.0) -> dict[str, Any]:

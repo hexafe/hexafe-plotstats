@@ -580,6 +580,16 @@ def _grouped_histogram_excel_data(
         bins = "auto"  # type: ignore[assignment]
     counts, edges = np.histogram(all_values, bins=bins)
     labels = [f"{edges[index]:.3g} - {edges[index + 1]:.3g}" for index in range(len(edges) - 1)]
+    bin_rows = [
+        {
+            "label": label,
+            "start": float(edges[index]),
+            "end": float(edges[index + 1]),
+            "center": float((edges[index] + edges[index + 1]) / 2.0),
+            "width": float(edges[index + 1] - edges[index]),
+        }
+        for index, label in enumerate(labels)
+    ]
     series = []
     for label, values in groups.items():
         group_counts, _ = np.histogram([float(value) for value in values], bins=edges)
@@ -589,16 +599,16 @@ def _grouped_histogram_excel_data(
                 "name": label,
                 "values": [
                     {
-                        "label": bin_label,
+                        **bin_row,
                         "count": int(count),
                         "share": float(count) / total if total > 0 else 0.0,
                     }
-                    for bin_label, count in zip(labels, group_counts, strict=False)
+                    for bin_row, count in zip(bin_rows, group_counts, strict=False)
                 ],
             }
         )
     return {
-        "bins": [{"label": label, "start": float(edges[i]), "end": float(edges[i + 1])} for i, label in enumerate(labels)],
+        "bins": bin_rows,
         "series": series,
         "total_counts": [int(value) for value in counts],
     }
@@ -619,10 +629,18 @@ def _grouped_histogram_plotly_spec(
             {
                 "type": "bar",
                 "name": str(group.get("name") or "Group"),
-                "x": [row["label"] for row in values],
+                "x": [row["center"] for row in values],
                 "y": [row["share"] for row in values],
-                "customdata": [[row["count"]] for row in values],
-                "hovertemplate": "%{x}<br>frequency=%{y:.2%}<br>count=%{customdata[0]}<extra></extra>",
+                "width": [row["width"] for row in values],
+                "customdata": [
+                    [row["start"], row["end"], row["count"], row["label"]]
+                    for row in values
+                ],
+                "hovertemplate": (
+                    "bin=%{customdata[0]:.4g}..%{customdata[1]:.4g}<br>"
+                    "frequency=%{y:.2%}<br>"
+                    "count=%{customdata[2]}<extra></extra>"
+                ),
             }
         )
     shapes, annotations = _vertical_reference_shapes_and_annotations(payload)
@@ -635,8 +653,12 @@ def _grouped_histogram_plotly_spec(
         "layout": {
             "title": {"text": str(payload.get("title") or "Grouped histogram")},
             "barmode": "overlay",
-            "yaxis": {"tickformat": ".0%", "title": {"text": "Frequency (%)"}},
-            "xaxis": {"title": {"text": _histogram_x_axis_label(payload)}},
+            "yaxis": {"tickformat": ".0%", "title": {"text": "Frequency (%)"}, "range": [0.0, 1.0]},
+            "xaxis": {
+                "title": {"text": _histogram_x_axis_label(payload)},
+                "tickformat": ".4~g",
+                "automargin": True,
+            },
             "shapes": shapes,
             "annotations": annotations,
             "meta": {
