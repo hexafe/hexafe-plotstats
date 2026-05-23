@@ -20,11 +20,12 @@ if SRC_ROOT.exists():
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/hexafe-plotstats-matplotlib")
 
-import matplotlib
-import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib  # noqa: E402
 
 matplotlib.use("Agg", force=True)
+
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
 
 from hexafe_plotstats import (  # noqa: E402
     HistogramConfig,
