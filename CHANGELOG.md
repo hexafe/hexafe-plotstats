@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add semi-opaque backgrounds behind static Matplotlib scatter reference-line
+  annotations so LSL, Nominal, and USL labels stay readable over the plotted
+  lines.
+
 ## 0.1.0a1 - 2026-05-16
 
 - Add Plotly backend coverage for histogram, scatter, IQR, and violin.

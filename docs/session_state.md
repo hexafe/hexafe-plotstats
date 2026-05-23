@@ -1,6 +1,6 @@
 # Session state
 
-Last updated: 2026-05-17, interactive dashboard parity slice
+Last updated: 2026-05-23, static scatter annotation hotfix
 
 ## Current goal
 
@@ -8,15 +8,19 @@ Build `hexafe-plotstats` as a standalone library-first package for statistical v
 
 ## Current continuation pointer
 
+- Current hotfix branch: `codex/scatter-annotation-backgrounds`.
+- The current Metroliza consumer pin targets the static scatter annotation
+  hotfix commit from this branch.
 - Start with `docs/2026-05-16-audit_implementation_plan.md` for the latest
-  audit reconciliation and implementation order.
+  broader audit reconciliation and implementation order.
 - The latest implementation slice makes Metroliza-style dashboard specs
   interactive by default for histogram, violin, and IQR/box, normalizes
   dashboard histograms to relative frequency percent, suppresses embedded
   Plotly histogram tables in interactive specs, restores violin extrema/sigma
   markers, enriches IQR hover/outliers, and keeps trend lines subtle.
-- The next consumer release step is to publish this package slice and update
-  Metroliza's full-SHA `hexafe-plotstats` pin to the published commit.
+- Latest hotfix slice adds semi-opaque white backgrounds behind static
+  Matplotlib scatter LSL, Nominal, and USL annotations, matching the existing
+  IQR/violin annotation treatment.
 - Large Plotly scatter should aggregate by default. Temporal X axes should pick
   minute/hour/day/week buckets automatically from the requested X-axis range and
   target point count. Interactive traces should contain only aggregated data;
