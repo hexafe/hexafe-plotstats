@@ -659,6 +659,34 @@ def test_iqr_and_violin_matplotlib_annotations_use_white_bbox_and_high_zorder() 
         _close_result(violin_result)
 
 
+def test_scatter_matplotlib_reference_annotations_use_white_bbox_and_high_zorder() -> None:
+    payload = build_scatter_payload(
+        [1, 2, 3, 4],
+        [2, 4, 6, 8],
+        metadata={
+            "reference_lines": [
+                {"label": "LSL", "kind": "lsl", "value": 1.5},
+                {"label": "Nominal", "kind": "nominal", "value": 4.5},
+                {"label": "USL", "kind": "usl", "value": 8.5},
+            ],
+        },
+    )
+
+    result = render_scatter(payload)
+    try:
+        annotation_texts = [text for text in result.ax.texts if "=" in text.get_text()]
+        assert {text.get_text() for text in annotation_texts} == {"LSL=1.5", "Nominal=4.5", "USL=8.5"}
+        for text in annotation_texts:
+            bbox = text.get_bbox_patch()
+            assert bbox is not None
+            assert text.get_zorder() >= 7
+            red, green, blue, alpha = bbox.get_facecolor()
+            assert (red, green, blue) == pytest.approx((1.0, 1.0, 1.0))
+            assert alpha >= 0.85
+    finally:
+        _close_result(result)
+
+
 def test_hexbin_scatter_resolves_explicit_cells() -> None:
     payload = build_scatter_payload(
         range(20),

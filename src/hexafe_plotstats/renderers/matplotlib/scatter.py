@@ -70,6 +70,13 @@ def render_scatter_matplotlib(payload: ScatterPayload) -> RenderResult:
             ha="right",
             fontsize=8,
             color=line.stroke,
+            zorder=7,
+            bbox={
+                "boxstyle": "round,pad=0.14",
+                "facecolor": "#ffffff",
+                "edgecolor": "#d1d5db",
+                "alpha": 0.9,
+            },
         )
 
     ax.set_xlabel("x")
